@@ -23,6 +23,7 @@ class ImageSegmenter():
                 bottom_boundary=950,
                 left_boundary=0,
                 right_boundary=2560,
+                result_folder_path="../Results",
                 override_exists=False):
         '''
         Args:
@@ -32,6 +33,8 @@ class ImageSegmenter():
             bottom_boundary (int)  : Pixel boundary for cropping image
             left_boundary (int)    : Pixel boundary for cropping image
             right_boundary (int)   : Pixel boundary for cropping image
+            result_folder_path (string) : Path to the folder .csv should be saved.
+            override_exists (bool) : If .csv already exists, DO NOT overwrite it if this variable is False. Allows classification across sessions
         '''
         self.input_path = input_path
         self.pixels_to_um = pixels_to_um
@@ -49,8 +52,8 @@ class ImageSegmenter():
             self._file_name = 'tmp'
             cv2.imwrite(f'{self._file_name}.png', input_path, [cv2.IMWRITE_PNG_COMPRESSION, 0])
             
-        os.makedirs('Results',exist_ok=True)
-        self._csv_file  = f'Results/values_{self._file_name}.csv'
+        os.makedirs(result_folder_path,exist_ok=True)
+        self._csv_file  = f'{result_folder_path}/values_{self._file_name}.csv'
             
 
         self.img  = cv2.imread(self.input_path, 0)
@@ -202,7 +205,7 @@ class ImageSegmenter():
         self.df # Make sure this is initiated
         data_arr = []
         ii = 0
-        regions_list = self.df["Region"]
+        regions_list = list(self.df["Region"])
         print(regions_list)
         while ii < len(regions_list): # 1-Offset for counting purposes
             region_oi = regions_list[ii]+self.label_increment
@@ -227,8 +230,8 @@ class ImageSegmenter():
             # User Input
             input_list = ['C','M','P','I','B','D']
             
-            print(f'Region {region_oi} (Max: {max(regions_list)}) NOTE: a skip may imply a bad region')
-            print("Type an integer to jump to image, or a character below to label image\n", 
+            print(f'Region {region_oi} (Max: {max(regions_list)}) \nNOTE: Skipping a region may mean a bad region was encountered\n')
+            print("Type an integer to jump to region, or a character below to label image\n", 
                 "C = Crystal, M = Multiple Crystal, P = Poorly Segmented, I = Incomplete, B = Back, D = Done")
             user_input = input()
             while (user_input not in input_list) and (not user_input.isnumeric()):
@@ -252,8 +255,9 @@ class ImageSegmenter():
                 translated_input = 'Poorly Segmented'
             elif user_input == 'I':
                 translated_input = 'Incomplete'
-            self.df[self.df['Region'] == region_oi]['Labels'] = translated_input
+            self.df.at[self.df['Region'] == region_oi,'Labels'] = translated_input
             self.df.to_csv(self._csv_file)
+            
             ii = ii + 1
 
     def labeling_mapping(self):
