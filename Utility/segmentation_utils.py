@@ -63,7 +63,6 @@ class ImageSegmenter():
         self.img3 = self.img3[self.top_boundary:self.bottom_boundary,
                                 self.left_boundary:self.right_boundary]
 
-        self.ret, self.thresh = cv2.threshold(self.img2, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
         self.set_markers()
 
         self.regions_list = np.unique(self.markers)-self.label_increment
@@ -82,22 +81,23 @@ class ImageSegmenter():
         #Setting up markers for watershed algorithm
 
         kernel = np.ones((3,3),np.uint8) 
+        self.ret, self.thresh = cv2.threshold(self.img2, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
 
         #what is definitely your background?
-        bg_mark = cv2.dilate(self.thresh,kernel,iterations = 1)
+        self._bg_mark = cv2.dilate(self.thresh,kernel,iterations = 1)
 
         #apply distance transform
-        dist_transform = cv2.distanceTransform(self.thresh, cv2.DIST_L2, 5)
+        self._dist_transform = cv2.distanceTransform(self.thresh, cv2.DIST_L2, 5)
 
         #thresholding the distance transformed image
-        ret2, fg_mark = cv2.threshold(dist_transform, 0.35*dist_transform.max(), 255, 0)
-        fg_mark = np.uint8(fg_mark)
+        ret2, fg_mark = cv2.threshold(self._dist_transform, 0.35*self._dist_transform.max(), 255, 0)
+        self._fg_mark = np.uint8(fg_mark)
 
         #the unknown pixels
-        unknown = cv2.subtract(bg_mark, fg_mark)
+        unknown = cv2.subtract(self._bg_mark, self._fg_mark)
 
-        self.outputs = cv2.connectedComponentsWithStats(fg_mark)
-        self.label_increment = 10
+        self.outputs = cv2.connectedComponentsWithStats(self._fg_mark)
+        self.label_increment = 1
 
         self.markers = self.outputs[1]+self.label_increment
 
@@ -285,6 +285,7 @@ class ImageSegmenter():
         sobelx = cv2.Sobel(src=img_blur, ddepth=cv2.CV_64F, dx=1, dy=0, ksize=3) # Sobel Edge Detection on the X axis
         sobely = cv2.Sobel(src=img_blur, ddepth=cv2.CV_64F, dx=0, dy=1, ksize=3) # Sobel Edge Detection on the Y axis
         edges = np.sqrt(sobelx**2+sobely**2)
+        #edges = cv2.addWeighted(sobelx,.5,sobely,.5,0)
         return edges
 
     
