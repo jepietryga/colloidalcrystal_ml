@@ -69,7 +69,7 @@ class ImageSegmenter():
         #print(self.regions_list)
         self.regions_list = [x for x in self.regions_list if x > 0]
 
-        self.img3[self.markers2 == -1] = [0, 255,255]
+        #self.img3[self.markers2 == -1] = [0, 255,255]
 
         self.img4 = color.label2rgb(self.markers2, bg_label=0)
         self.decorate_regions()

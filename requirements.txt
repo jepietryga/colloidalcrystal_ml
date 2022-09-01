@@ -7,3 +7,4 @@ scipy==1.9.0
 scikit_image==0.19.3
 heatmapz
 opencv-python
+jupyter
