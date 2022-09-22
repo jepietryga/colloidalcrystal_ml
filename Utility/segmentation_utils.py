@@ -149,6 +149,12 @@ class ImageSegmenter():
             ]
         clusters = measure.regionprops_table(self.markers-10, self.img2,properties=propList)
 
+        scaled_features = ['equivalent_diameter',
+                           'major_axis_length',
+                           'minor_axis_length',
+                           'perimeter',
+                           'feret_diameter_max'
+                          ]
         for key,val in clusters.items():
             #print(f'{key}: {len(val)}')
             if key == 'area':
@@ -157,7 +163,7 @@ class ImageSegmenter():
                 continue # Line didn't seem used to me previously...?
             if key == 'label':
                 continue
-            elif key.find('intensity') < 0:
+            elif key in scaled_features:
                 clusters[key] = clusters[key]*self.pixels_to_um
 
         # Add in Composite variables
