@@ -13,6 +13,8 @@ pd.options.mode.chained_assignment = None  # default='warn'
 import os
 from cached_property import cached_property
 from IPython.display import clear_output
+from ipywidgets import interact, interactive, fixed, interact_manual
+import ipywidgets as widgets
 
 class ImageSegmenter():
     
@@ -55,7 +57,22 @@ class ImageSegmenter():
         os.makedirs(result_folder_path,exist_ok=True)
         self._csv_file  = f'{result_folder_path}/values_{self._file_name}.csv'
             
+        # Define default image variables
+        # NOTE: Will need to do something with this in the future for input
+        self.canny_tl = 40
+        self.canny_tu = 40
+        self.blur_size = (5,5)
+        self.kernel = np.ones((3,3),np.uint8) 
+        self.distance_scale = .35 # For controlling distance transform
 
+        self.process_images()
+
+        print(f'Image Segmenter on {self._file_name} created!')
+
+    def process_images(self,edge_modification=False):
+        '''
+        Main runner for creating images
+        '''
         self.img  = cv2.imread(self.input_path, 0)
         self.img2 = self.img[self.top_boundary:self.bottom_boundary,
                                 self.left_boundary:self.right_boundary]
@@ -63,7 +80,7 @@ class ImageSegmenter():
         self.img3 = self.img3[self.top_boundary:self.bottom_boundary,
                                 self.left_boundary:self.right_boundary]
 
-        self.set_markers()
+        self.set_markers(edge_modification=edge_modification)
 
         self.regions_list = np.unique(self.markers)-self.label_increment
         #print(self.regions_list)
@@ -74,23 +91,25 @@ class ImageSegmenter():
         self.img4 = color.label2rgb(self.markers2, bg_label=0)
         self.decorate_regions()
 
-        print(f'Image Segmenter on {self._file_name} created!')
-    
-    def set_markers(self):
+
+
+    def set_markers(self,edge_modification=False):
         '''Perform Watershed algorithm, return markers'''
         #Setting up markers for watershed algorithm
 
-        kernel = np.ones((3,3),np.uint8) 
+        kernel = self.kernel
         self.ret, self.thresh = cv2.threshold(self.img2, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
 
         #what is definitely your background?
         self._bg_mark = cv2.dilate(self.thresh,kernel,iterations = 1)
 
         #apply distance transform
+        if edge_modification:
+            self.thresh = self.thresh - self.Canny_edge()
         self._dist_transform = cv2.distanceTransform(self.thresh, cv2.DIST_L2, 5)
 
         #thresholding the distance transformed image
-        ret2, fg_mark = cv2.threshold(self._dist_transform, 0.35*self._dist_transform.max(), 255, 0)
+        ret2, fg_mark = cv2.threshold(self._dist_transform, self.distance_scale*self._dist_transform.max(), 255, 0)
         self._fg_mark = np.uint8(fg_mark)
 
         #the unknown pixels
@@ -122,7 +141,7 @@ class ImageSegmenter():
 
 
     @cached_property # NOTE: Cached Property is basically a memoized function
-    def df(self):
+    def df(self): # Might not actually want this to be cached if we're making this interactive...
         file_present = os.path.isfile(self._csv_file)
         if file_present and not self.override_exists:
             df = pd.read_csv(self._csv_file)
@@ -287,6 +306,11 @@ class ImageSegmenter():
         edges = np.sqrt(sobelx**2+sobely**2)
         #edges = cv2.addWeighted(sobelx,.5,sobely,.5,0)
         return edges
+
+    def Canny_edge(self):
+        img_blur = cv2.GaussianBlur(self.img2, self.blur_size,0)
+        self.edge = cv2.Canny(img_blur,self.canny_tl,self.canny_tu)
+        return self.edge
 
     
 
