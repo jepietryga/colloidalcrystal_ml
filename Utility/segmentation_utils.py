@@ -22,7 +22,7 @@ class ImageSegmenter():
                 input_path=None,
                 pixels_to_um=9.37,
                 top_boundary=0,
-                bottom_boundary=950,
+                bottom_boundary=1920,
                 left_boundary=0,
                 right_boundary=2560,
                 result_folder_path="../Results",
@@ -69,7 +69,9 @@ class ImageSegmenter():
 
         print(f'Image Segmenter on {self._file_name} created!')
 
-    def process_images(self,edge_modification=False):
+    def process_images(self,
+        blur=False,
+        edge_modification=False):
         '''
         Main runner for creating images
         '''
@@ -80,7 +82,7 @@ class ImageSegmenter():
         self.img3 = self.img3[self.top_boundary:self.bottom_boundary,
                                 self.left_boundary:self.right_boundary]
 
-        self.set_markers(edge_modification=edge_modification)
+        self.set_markers(blur=blur,edge_modification=edge_modification)
 
         self.regions_list = np.unique(self.markers)-self.label_increment
         #print(self.regions_list)
@@ -93,12 +95,16 @@ class ImageSegmenter():
 
 
 
-    def set_markers(self,edge_modification=False):
+    def set_markers(self,
+        blur=False,
+        edge_modification=False):
         '''Perform Watershed algorithm, return markers'''
         #Setting up markers for watershed algorithm
 
         kernel = self.kernel
-        self.ret, self.thresh = cv2.threshold(self.img2, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+
+        threshable = self.img2 if not blur else cv2.GaussianBlur(self.img2, self.blur_size,0)
+        self.ret, self.thresh = cv2.threshold(threshable, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
 
         #what is definitely your background?
         self._bg_mark = cv2.dilate(self.thresh,kernel,iterations = 1)
