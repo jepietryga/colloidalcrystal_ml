@@ -64,6 +64,8 @@ class ImageSegmenter():
         self.blur_size = (5,5)
         self.kernel = np.ones((3,3),np.uint8) 
         self.distance_scale = .35 # For controlling distance transform
+        self.bilateral_d = 50
+        self.bilateral_ss = 90
 
         self.process_images()
 
@@ -71,7 +73,8 @@ class ImageSegmenter():
 
     def process_images(self,
         blur=False,
-        edge_modification=False):
+        edge_modification=False,
+        use_bilateral=False):
         '''
         Main runner for creating images
         '''
@@ -82,7 +85,7 @@ class ImageSegmenter():
         self.img3 = self.img3[self.top_boundary:self.bottom_boundary,
                                 self.left_boundary:self.right_boundary]
 
-        self.set_markers(blur=blur,edge_modification=edge_modification)
+        self.set_markers(blur=blur,edge_modification=edge_modification,use_bilateral=use_bilateral)
 
         self.regions_list = np.unique(self.markers)-self.label_increment
         #print(self.regions_list)
@@ -97,7 +100,8 @@ class ImageSegmenter():
 
     def set_markers(self,
         blur=False,
-        edge_modification=False):
+        edge_modification=False,
+        use_bilateral=False):
         '''Perform Watershed algorithm, return markers'''
         #Setting up markers for watershed algorithm
 
@@ -111,7 +115,7 @@ class ImageSegmenter():
 
         #apply distance transform
         if edge_modification:
-            self.thresh = self.thresh - self.Canny_edge()
+            self.thresh = self.thresh - self.canny_edge(use_bilateral=use_bilateral)
         self._dist_transform = cv2.distanceTransform(self.thresh, cv2.DIST_L2, 5)
 
         #thresholding the distance transformed image
@@ -313,9 +317,23 @@ class ImageSegmenter():
         #edges = cv2.addWeighted(sobelx,.5,sobely,.5,0)
         return edges
 
-    def Canny_edge(self):
-        img_blur = cv2.GaussianBlur(self.img2, self.blur_size,0)
-        self.edge = cv2.Canny(img_blur,self.canny_tl,self.canny_tu)
+    def canny_edge(self, blur_size = None, tl = None,tu = None,d = None, ss = None, use_bilateral=False,):
+        if not blur_size:
+            blur_size = self.blur_size
+        if not tl:
+            tl = self.canny_tl
+        if not tu:
+            tu = self.canny_tu
+        if not d:
+            d = self.bilateral_d
+        if not ss:
+            ss = self.bilateral_ss
+
+        if not use_bilateral:
+            img_blur = cv2.GaussianBlur(self.img2, blur_size,0)
+        else:
+            img_blur = cv2.bilateralFilter(self.img2,d,ss,ss)
+        self.edge = cv2.Canny(img_blur,tl,tu)
         return self.edge
 
     
