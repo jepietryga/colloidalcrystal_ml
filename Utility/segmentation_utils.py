@@ -15,6 +15,10 @@ from cached_property import cached_property
 from IPython.display import clear_output
 from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
+from functools import partial
+from skimage import data, segmentation, feature, future
+from sklearn.ensemble import RandomForestClassifier
+import pickle
 
 class ImageSegmenter():
     
@@ -26,7 +30,11 @@ class ImageSegmenter():
                 left_boundary=0,
                 right_boundary=2560,
                 result_folder_path="../Results",
-                override_exists=False):
+                override_exists=False,
+                threshold_mode = "otsu",
+                edge_modification = None,
+                file_str = None
+                ):
         '''
         Args:
             input_path (string OR img)    : Path to the image desired to be interpreted (if img, create tmp file)
@@ -45,6 +53,8 @@ class ImageSegmenter():
         self.left_boundary = left_boundary
         self.right_boundary = right_boundary
         self.override_exists = override_exists
+        self.threshold_mode = threshold_mode
+        self.edge_modification = edge_modification
 
         # Derived Variables
         if isinstance(input_path,str):
@@ -55,7 +65,7 @@ class ImageSegmenter():
             cv2.imwrite(f'{self._file_name}.png', input_path, [cv2.IMWRITE_PNG_COMPRESSION, 0])
             
         os.makedirs(result_folder_path,exist_ok=True)
-        self._csv_file  = f'{result_folder_path}/values_{self._file_name}.csv'
+        self._csv_file  = f'{result_folder_path}/values_{self._file_name}_{file_str}.csv'
             
         # Define default image variables
         # NOTE: Will need to do something with this in the future for input
@@ -67,7 +77,10 @@ class ImageSegmenter():
         self.bilateral_d = 50
         self.bilateral_ss = 90
 
-        self.process_images()
+        # Custom Pixel Classifier Variables
+        self.pixel_model = None
+
+        self.process_images(edge_modification=self.edge_modification)
 
         print(f'Image Segmenter on {self._file_name} created!')
 
@@ -107,15 +120,14 @@ class ImageSegmenter():
 
         kernel = self.kernel
 
-        threshable = self.img2 if not blur else cv2.GaussianBlur(self.img2, self.blur_size,0)
-        self.ret, self.thresh = cv2.threshold(threshable, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+        self._generate_threshold()
 
         #what is definitely your background?
         self._bg_mark = cv2.dilate(self.thresh,kernel,iterations = 1)
 
         #apply distance transform
         if edge_modification:
-            self.thresh = self.thresh - self.canny_edge(use_bilateral=use_bilateral)
+            self._perform_edge_modification()    
         self._dist_transform = cv2.distanceTransform(self.thresh, cv2.DIST_L2, 5)
 
         #thresholding the distance transformed image
@@ -133,7 +145,110 @@ class ImageSegmenter():
         self.markers[unknown == 255]=0
         self.markers2 = cv2.watershed(self.img3,self.markers)
 
-        
+    def _generate_threshold(self,blur=None,threshold_mode=None):
+        '''
+        Method of creating threshold, uses different modes
+        '''
+        if threshold_mode == None:
+            threshold_mode = self.threshold_mode
+        if threshold_mode == "otsu":
+            threshable = self.img2 if not blur else cv2.GaussianBlur(self.img2, self.blur_size,0)
+            self.ret, self.thresh = cv2.threshold(threshable, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+
+        if threshold_mode == "pixel":
+            # Load model
+            self.load_pixel_segmenter()
+
+            # Featurize Image
+            sigma_min = 1
+            sigma_max = 16
+            features_func = partial(feature.multiscale_basic_features,
+                            intensity=False, edges=True, texture=True,
+                            sigma_min=sigma_min, sigma_max=sigma_max,
+                            channel_axis=None)
+            features = features_func(self.img2)
+
+            # Flatten features
+            (x,y,z) = features.shape
+            features = features.reshape(x*y,z)
+
+            # Predict
+            results = future.predict_segmenter(features,self.pixel_model)
+
+            # Reshape
+            self.thresh = 255*(results.reshape(x,y).astype(np.uint8)-1) # To make background and not
+    
+    def _perform_edge_modification(self, edge_modification = None):
+        '''
+        Perform edge modification of threshold using internal schemes
+
+        dark_bright: Use dark_bright edge detection scheme
+        '''
+        if not edge_modification:
+            edge_modification = self.edge_modification
+            print(edge_modification)
+
+        if edge_modification == None:
+            return
+        elif edge_modification == "dark_bright": # Note: Probably add this as separate utility
+            # Get Canny Edge
+            canny_args = [(3,3),80,160,80,80,False]
+            canny_edge = self.canny_edge(*canny_args)
+
+            # Define sharpen kernel
+            n = -1
+            m = 9
+            kernel = np.array([[n,n,n],
+                            [n,m,n],
+                            [n,n,n]]
+                            )*1
+            kernel = np.ones([7,7])*n
+            kernel[3,3] = 49
+
+            # Get just edge intensities
+            img_edges = cv2.filter2D(self.img2,-1,kernel)
+            img_edges[canny_edge == 0] = 0
+
+            # Make histograms for brightness/darkness heuristic
+            histogram, bin_edges = np.histogram(img_edges,bins=256)
+
+            # remove 0 vals, 255 vals
+            bin_edges = bin_edges[1:-1]
+            histogram = histogram[1:-1]
+            cut_off = bin_edges[np.argmax(histogram)]
+
+            # Define bright edges
+            bright_edges = copy.deepcopy(img_edges)
+            bright_edges[bright_edges < cut_off] = 0
+            bright_edges[bright_edges > 0] = 255
+
+            # define dark edges
+            dark_edges = copy.deepcopy(img_edges)
+            dark_edges[dark_edges > cut_off] = 0
+            dark_edges[dark_edges > 0] = 255
+
+            # broaden edges for visibility, store for figure reference
+            bright_broad = cv2.GaussianBlur(bright_edges,(3,3),cv2.BORDER_DEFAULT)
+            dark_broad  = cv2.GaussianBlur(dark_edges,(3,3),cv2.BORDER_DEFAULT)
+            color_img = cv2.cvtColor(self.img2,cv2.COLOR_GRAY2RGB)
+            color_img[bright_broad > 0] = (0,0,255)
+            color_img[dark_broad > 0] = (0,255,0)
+            #color_img[(bright_broad > 0) & (dark_broad>0)] = (255,0,0)
+            self._edge_highlight = color_img
+            self._dark_edges = dark_edges
+            self._original_thresh = copy.deepcopy(self.thresh)
+
+            # Modify threshold
+            self.thresh = self.thresh-dark_edges
+
+    def load_pixel_segmenter(self):
+        '''
+        Load the pixel classifer. Is a LARGE model, so only use this if needed
+        '''
+        if not self.pixel_model:
+                with open("../Models/bg_segmenter.pickle","rb") as f:
+                    self.pixel_model = pickle.load(f)
+
     def decorate_regions(self):
         '''
         Labels image 4 using information from Scikit to ensure commensurate labeling
@@ -330,6 +445,7 @@ class ImageSegmenter():
             ss = self.bilateral_ss
 
         if not use_bilateral:
+            print(blur_size)
             img_blur = cv2.GaussianBlur(self.img2, blur_size,0)
         else:
             img_blur = cv2.bilateralFilter(self.img2,d,ss,ss)
