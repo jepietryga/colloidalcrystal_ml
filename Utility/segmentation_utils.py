@@ -109,8 +109,6 @@ class ImageSegmenter():
         self.img4 = color.label2rgb(self.markers2, bg_label=0)
         self.decorate_regions()
 
-
-
     def set_markers(self,
         blur=False,
         edge_modification=False,
@@ -138,12 +136,13 @@ class ImageSegmenter():
         unknown = cv2.subtract(self._bg_mark, self._fg_mark)
 
         self.outputs = cv2.connectedComponentsWithStats(self._fg_mark)
-        self.label_increment = 1
+        self.label_increment = 10
 
         self.markers = self.outputs[1]+self.label_increment
 
         self.markers[unknown == 255]=0
-        self.markers2 = cv2.watershed(self.img3,self.markers)
+        temp_markers = copy.deepcopy(self.markers)
+        self.markers2 = cv2.watershed(self.img3,temp_markers)
 
     def _generate_threshold(self,blur=None,threshold_mode=None):
         '''
@@ -291,7 +290,7 @@ class ImageSegmenter():
             'moments_hu',
             'label'
             ]
-        clusters = measure.regionprops_table(self.markers-10, self.img2,properties=propList)
+        clusters = measure.regionprops_table(self.markers2-self.label_increment, self.img2,properties=propList)
 
         for key,val in clusters.items():
             #print(f'{key}: {len(val)}')
@@ -399,7 +398,7 @@ class ImageSegmenter():
                 translated_input = 'Poorly Segmented'
             elif user_input == 'I':
                 translated_input = 'Incomplete'
-            self.df.at[self.df['Region'] == region_oi,'Labels'] = translated_input
+            self.df.loc[self.df['Region'] == region_oi,'Labels'] = translated_input
             self.df.to_csv(self._csv_file)
             
             ii = ii + 1
