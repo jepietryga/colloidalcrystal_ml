@@ -98,11 +98,7 @@ class ImageSegmenter():
         self.img3 = self.img3[self.top_boundary:self.bottom_boundary,
                                 self.left_boundary:self.right_boundary]
 
-<<<<<<< HEAD
         self.set_markers(blur=blur,edge_modification=edge_modification,use_bilateral=use_bilateral)
-=======
-        self.set_markers()
->>>>>>> master
 
         self.regions_list = np.unique(self.markers)-self.label_increment
         #print(self.regions_list)
@@ -119,16 +115,10 @@ class ImageSegmenter():
         use_bilateral=False):
         '''Perform Watershed algorithm, return markers'''
         #Setting up markers for watershed algorithm
-<<<<<<< HEAD
-
+gener
         kernel = self.kernel
 
         self._generate_threshold()
-=======
-        self.ret, self.thresh = cv2.threshold(self.img2, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-        
-        kernel = np.ones((3,3),np.uint8) 
->>>>>>> master
 
         #what is definitely your background?
         self._bg_mark = cv2.dilate(self.thresh,kernel,iterations = 1)
@@ -139,13 +129,8 @@ class ImageSegmenter():
         self._dist_transform = cv2.distanceTransform(self.thresh, cv2.DIST_L2, 5)
 
         #thresholding the distance transformed image
-<<<<<<< HEAD
         ret2, fg_mark = cv2.threshold(self._dist_transform, self.distance_scale*self._dist_transform.max(), 255, 0)
         self._fg_mark = np.uint8(fg_mark)
-=======
-        ret2, fg_mark = cv2.threshold(dist_transform, 0.25*dist_transform.max(), 255, 0)
-        fg_mark = np.uint8(fg_mark)
->>>>>>> master
 
         #the unknown pixels
         unknown = cv2.subtract(self._bg_mark, self._fg_mark)
