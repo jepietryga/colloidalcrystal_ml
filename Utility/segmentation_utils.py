@@ -423,14 +423,6 @@ class ImageSegmenter():
             ii = ii + 1
         return mapping_region,mapping_index
 
-    def sobel_edge(self):
-        img_blur = cv2.GaussianBlur(self.img2, (9,9), 0)
-        sobelx = cv2.Sobel(src=img_blur, ddepth=cv2.CV_64F, dx=1, dy=0, ksize=3) # Sobel Edge Detection on the X axis
-        sobely = cv2.Sobel(src=img_blur, ddepth=cv2.CV_64F, dx=0, dy=1, ksize=3) # Sobel Edge Detection on the Y axis
-        edges = np.sqrt(sobelx**2+sobely**2)
-        #edges = cv2.addWeighted(sobelx,.5,sobely,.5,0)
-        return edges
-
     def canny_edge(self, blur_size = None, tl = None,tu = None,d = None, ss = None, use_bilateral=False,):
         if not blur_size:
             blur_size = self.blur_size
