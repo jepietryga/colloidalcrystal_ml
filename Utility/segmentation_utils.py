@@ -98,7 +98,11 @@ class ImageSegmenter():
         self.img3 = self.img3[self.top_boundary:self.bottom_boundary,
                                 self.left_boundary:self.right_boundary]
 
+<<<<<<< HEAD
         self.set_markers(blur=blur,edge_modification=edge_modification,use_bilateral=use_bilateral)
+=======
+        self.set_markers()
+>>>>>>> master
 
         self.regions_list = np.unique(self.markers)-self.label_increment
         #print(self.regions_list)
@@ -115,10 +119,16 @@ class ImageSegmenter():
         use_bilateral=False):
         '''Perform Watershed algorithm, return markers'''
         #Setting up markers for watershed algorithm
+<<<<<<< HEAD
 
         kernel = self.kernel
 
         self._generate_threshold()
+=======
+        self.ret, self.thresh = cv2.threshold(self.img2, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+        
+        kernel = np.ones((3,3),np.uint8) 
+>>>>>>> master
 
         #what is definitely your background?
         self._bg_mark = cv2.dilate(self.thresh,kernel,iterations = 1)
@@ -129,8 +139,13 @@ class ImageSegmenter():
         self._dist_transform = cv2.distanceTransform(self.thresh, cv2.DIST_L2, 5)
 
         #thresholding the distance transformed image
+<<<<<<< HEAD
         ret2, fg_mark = cv2.threshold(self._dist_transform, self.distance_scale*self._dist_transform.max(), 255, 0)
         self._fg_mark = np.uint8(fg_mark)
+=======
+        ret2, fg_mark = cv2.threshold(dist_transform, 0.25*dist_transform.max(), 255, 0)
+        fg_mark = np.uint8(fg_mark)
+>>>>>>> master
 
         #the unknown pixels
         unknown = cv2.subtract(self._bg_mark, self._fg_mark)
@@ -292,6 +307,12 @@ class ImageSegmenter():
             ]
         clusters = measure.regionprops_table(self.markers2-self.label_increment, self.img2,properties=propList)
 
+        scaled_features = ['equivalent_diameter',
+                           'major_axis_length',
+                           'minor_axis_length',
+                           'perimeter',
+                           'feret_diameter_max'
+                          ]
         for key,val in clusters.items():
             #print(f'{key}: {len(val)}')
             if key == 'area':
@@ -300,7 +321,7 @@ class ImageSegmenter():
                 continue # Line didn't seem used to me previously...?
             if key == 'label':
                 continue
-            elif key.find('intensity') < 0:
+            elif key in scaled_features:
                 clusters[key] = clusters[key]*self.pixels_to_um
 
         # Add in Composite variables
@@ -345,6 +366,8 @@ class ImageSegmenter():
         img Regions associated with the image segmentation 
         NOTE: _Slightly_ different from 'begin_labeling' as we remove non-region ENTIRELY
         '''
+        return self.grab_region_array(focused=True)
+
         self.df # Make sure this is initiated
         data_arr = []
         ii = 0
@@ -354,6 +377,25 @@ class ImageSegmenter():
             region_oi = regions_list[ii]+self.label_increment
 
             data_arr.append(self._grab_region(self.img2,region_oi,alpha=0,buffer=5))
+            ii += 1
+        return data_arr
+    
+    def grab_region_array(self,focused=True):
+        '''
+        Grab an array of images that are bounded (focused) or the same size as img2 (nopt focused)
+        Can be useful for quickly making bools of regions
+        '''
+        self.df # Make sure this is initiated
+        data_arr = []
+        ii = 0
+        regions_list = list(self.df["Region"])
+        print(regions_list)
+        while ii < len(regions_list): # 1-Offset for counting purposes
+            region_oi = regions_list[ii]+self.label_increment
+            if focused:
+                data_arr.append(self._grab_region(self.img2,region_oi,alpha=0,buffer=5))
+            if not focused:
+                data_arr.append(self._grab_region(self.img2,region_oi,alpha=0,buffer=np.inf))
             ii += 1
         return data_arr
 
