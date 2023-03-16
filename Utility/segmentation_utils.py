@@ -26,7 +26,7 @@ class ImageSegmenter():
                 input_path=None,
                 pixels_to_um=9.37,
                 top_boundary=0,
-                bottom_boundary=1920,
+                bottom_boundary=960,
                 left_boundary=0,
                 right_boundary=2560,
                 result_folder_path="../Results",
@@ -82,7 +82,7 @@ class ImageSegmenter():
 
         self.process_images(edge_modification=self.edge_modification)
 
-        print(f'Image Segmenter on {self._file_name} created!')
+        #print(f'Image Segmenter on {self._file_name} created!')
 
     def process_images(self,
         blur=False,
@@ -115,34 +115,90 @@ class ImageSegmenter():
         use_bilateral=False):
         '''Perform Watershed algorithm, return markers'''
         #Setting up markers for watershed algorithm
-gener
+
         kernel = self.kernel
 
         self._generate_threshold()
+        self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_CLOSE, kernel,iterations = 3)
 
         #what is definitely your background?
-        self._bg_mark = cv2.dilate(self.thresh,kernel,iterations = 1)
+        self._bg_mark = cv2.dilate(self.thresh,kernel)
 
         #apply distance transform
         if edge_modification:
-            self._perform_edge_modification()    
-        self._dist_transform = cv2.distanceTransform(self.thresh, cv2.DIST_L2, 5)
+            self._perform_edge_modification() # Adds "background" for dist transform to catch 
+        
+        # Add 0 border, distance transform, remove 0 border
+        thresh_border = cv2.copyMakeBorder(self.thresh,
+                                            top=1,
+                                            bottom=1,
+                                            right=1,
+                                            left=1,
+                                            borderType=cv2.BORDER_CONSTANT,
+                                            value=0
+                                            )
+        self._dist_transform = cv2.distanceTransform(thresh_border, cv2.DIST_L2, 5)
+        self._dist_transform = self._dist_transform[1:-1,1:-1]
 
         #thresholding the distance transformed image
         ret2, fg_mark = cv2.threshold(self._dist_transform, self.distance_scale*self._dist_transform.max(), 255, 0)
         self._fg_mark = np.uint8(fg_mark)
 
         #the unknown pixels
-        unknown = cv2.subtract(self._bg_mark, self._fg_mark)
+        self.unknown = cv2.subtract(self._bg_mark, self._fg_mark)
 
         self.outputs = cv2.connectedComponentsWithStats(self._fg_mark)
         self.label_increment = 10
 
         self.markers = self.outputs[1]+self.label_increment
 
-        self.markers[unknown == 255]=0
+        self.markers[self.unknown == 255]=0
         temp_markers = copy.deepcopy(self.markers)
         self.markers2 = cv2.watershed(self.img3,temp_markers)
+
+    def _otsu_threshold(self,blur=None):
+        '''
+        Otsu thresholding
+        '''
+        threshable = self.img2 if not blur else cv2.GaussianBlur(self.img2, self.blur_size,0)
+        ret, thresh = cv2.threshold(threshable, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+        return ret, thresh
+
+    def _pixel_threshold(self):
+        '''
+        Use Weka-inspired pixel segmenter to generate threshold
+        NOTE: Still developing best model for this.
+        '''
+        # Load model
+        self.load_pixel_segmenter()
+
+        # Featurize Image
+        sigma_min = 1
+        sigma_max = 16
+        features_func = partial(feature.multiscale_basic_features,
+                        intensity=False, edges=True, texture=True,
+                        sigma_min=sigma_min, sigma_max=sigma_max,
+                        channel_axis=None)
+        features = features_func(self.img2)
+
+        # Flatten features
+        (x,y,z) = features.shape
+        features = features.reshape(x*y,z)
+
+        # Predict
+        results = future.predict_segmenter(features,self.pixel_model)
+
+        # Reshape
+        thresh = 255*(results.reshape(x,y).astype(np.uint8)-1) # To make background and not
+        return thresh
+
+    def _local_threshold(self):
+        '''
+        Use Adaptive (local) threhsolding
+        '''
+        thresh = cv2.adaptiveThreshold(self.img2,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                            cv2.THRESH_BINARY,53,10)
+        return thresh
 
     def _generate_threshold(self,blur=None,threshold_mode=None):
         '''
@@ -151,32 +207,25 @@ gener
         if threshold_mode == None:
             threshold_mode = self.threshold_mode
         if threshold_mode == "otsu":
-            threshable = self.img2 if not blur else cv2.GaussianBlur(self.img2, self.blur_size,0)
-            self.ret, self.thresh = cv2.threshold(threshable, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+            self.ret, self.thresh = self._otsu_threshold(blur)
+            return
 
         if threshold_mode == "pixel":
-            # Load model
-            self.load_pixel_segmenter()
-
-            # Featurize Image
-            sigma_min = 1
-            sigma_max = 16
-            features_func = partial(feature.multiscale_basic_features,
-                            intensity=False, edges=True, texture=True,
-                            sigma_min=sigma_min, sigma_max=sigma_max,
-                            channel_axis=None)
-            features = features_func(self.img2)
-
-            # Flatten features
-            (x,y,z) = features.shape
-            features = features.reshape(x*y,z)
-
-            # Predict
-            results = future.predict_segmenter(features,self.pixel_model)
-
-            # Reshape
-            self.thresh = 255*(results.reshape(x,y).astype(np.uint8)-1) # To make background and not
-    
+            self.thresh = self._pixel_threshold()
+            return 
+        if threshold_mode == "local":
+            self.thresh = self._local_threshold()
+            return
+        
+        if threshold_mode == "ensemble":
+            thresh_otsu = self._otsu_threshold(blur)[1].astype(bool)
+            thresh_local = self._local_threshold().astype(bool)
+            thresh_pixel = self._pixel_threshold().astype(bool)
+            ensemble = ( (thresh_pixel) & (thresh_local | thresh_otsu)) \
+                        | (thresh_otsu & thresh_local)
+            self.thresh = ensemble.astype(np.uint8)*255
+            return
+        
     def _perform_edge_modification(self, edge_modification = None):
         '''
         Perform edge modification of threshold using internal schemes
@@ -185,7 +234,7 @@ gener
         '''
         if not edge_modification:
             edge_modification = self.edge_modification
-            print(edge_modification)
+            #print(edge_modification)
 
         if edge_modification == None:
             return
@@ -296,7 +345,8 @@ gener
                            'major_axis_length',
                            'minor_axis_length',
                            'perimeter',
-                           'feret_diameter_max'
+                           'feret_diameter_max',
+                           #'solidity'
                           ]
         for key,val in clusters.items():
             #print(f'{key}: {len(val)}')
@@ -318,7 +368,7 @@ gener
         self.number_labels = len(clusters['area'])
         labeling_list = [None] * self.number_labels
         filename_list = [self.input_path] * self.number_labels
-        print(clusters['label'])
+        #print(clusters['label'])
         clusters['Labels'] = labeling_list
         clusters['Filename'] = filename_list
         clusters['Region'] = clusters['label']
@@ -357,7 +407,7 @@ gener
         data_arr = []
         ii = 0
         regions_list = list(self.df["Region"])
-        print(regions_list)
+        
         while ii < len(regions_list): # 1-Offset for counting purposes
             region_oi = regions_list[ii]+self.label_increment
 
@@ -374,7 +424,7 @@ gener
         data_arr = []
         ii = 0
         regions_list = list(self.df["Region"])
-        print(regions_list)
+        
         while ii < len(regions_list): # 1-Offset for counting purposes
             region_oi = regions_list[ii]+self.label_increment
             if focused:
