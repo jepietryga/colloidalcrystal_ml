@@ -1,5 +1,75 @@
-# Series of helper functions for reading data
+# Series of helper functions for doing model training
 import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LogisticRegression
+import pandas as pd 
+import matplotlib.pyplot as plt 
+import scipy.stats as stat
+import numpy as np 
+#import forestsci
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import train_test_split
+from sklearn import metrics
+from collections import Counter
+import json
+
+import sys
+sys.path.append("..")
+
+CONFIG_JSON = "config.json"
+
+def load_data(path_to_training):
+    '''
+    Load the trianing data (which comes with geometric features)
+    '''
+    df = pd.read_csv(path_to_training)
+    return df
+
+def adjust_df_crystal_noncrystal_data(df:pd.DataFrame):
+    '''
+    Given a dataframe, change all of its labels to be either crystalline or non-crystalline
+                  ALL DATA
+        ------>   /      \
+        Crystalline      Non-crystalline________
+           /   \                   /            \
+    Crystal  Multiple-Crystal  Incomplete     Poorly Segmented
+    '''
+    df_copy = df['Labels'].replace('Multiple Crystal','Crystal')
+    df_copy = df_copy.replace('Poorly Segmented','Incomplete')
+    df_copy.dropna(subset=['Labels'],inplace=True)
+    return df_copy
+
+def adjust_df_list_values(df:pd.DataFrame,label_list:list[str]=["Crystal","Multiple Crystal"]):
+    '''
+    Given a dataframe, keep only values in list (split the second level)
+                  ALL DATA
+                 /      \
+        Crystalline      Non-crystalline_______
+      ---> /   \                   /            \
+    Crystal  Multiple-Crystal  Incomplete     Poorly Segmented
+    '''
+    df_copy = df[df["Labels"].isin(label_list)]
+    return df_copy
+
+def split_feature_labels(df:pd.DataFrame,features_list:list[str] = None,
+                         targets_list:list[str] = ["Labels"]):
+    
+    if features_list is None:
+        with open(CONFIG_JSON,"r") as f:
+            config_dict = json.load(f)
+            features_list = config_dict["default_features"]
+    
+    ohe = OneHotEncoder(sparse=False)
+
+    X = df[features_list]
+    y = ohe(df[targets_list])
+
+    return X,y
+
+
+
+    
+
 def categorical_data_translator(passed_list):
     '''
     This is hard-coded since we know our own classifications
