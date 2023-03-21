@@ -15,6 +15,11 @@
         "moments_hu-2",
         "moments_hu-3",
         "moments_hu-5"
-    ]
-
+    ],
+    "model_params":{
+        "original":{
+            "min_samples_leaf":3,
+            "n_estimators":64
+        }
+    }
 }
