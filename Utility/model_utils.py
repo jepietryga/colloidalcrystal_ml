@@ -25,6 +25,23 @@ def load_data(path_to_training):
     df = pd.read_csv(path_to_training)
     return df
 
+def load_params(param_str:str="original",config_path=CONFIG_JSON):
+    '''
+    Return dict (Kwargs) for running model of choice
+    '''
+
+    with open(config_path,"r") as f:
+        config_dict = json.load(f)
+    
+    return config_dict["model_params"][param_str]
+
+def load_features(config_path,feature_str:str="default_features"):
+    
+    with open(config_path,"r") as f:
+        config_dict = json.load(f)
+        features_list = config_dict[feature_str]
+    return features_list
+
 def adjust_df_crystal_noncrystal_data(df:pd.DataFrame):
     '''
     Given a dataframe, change all of its labels to be either crystalline or non-crystalline
@@ -34,8 +51,11 @@ def adjust_df_crystal_noncrystal_data(df:pd.DataFrame):
            /   \                   /            \
     Crystal  Multiple-Crystal  Incomplete     Poorly Segmented
     '''
-    df_copy = df['Labels'].replace('Multiple Crystal','Crystal')
-    df_copy = df_copy.replace('Poorly Segmented','Incomplete')
+    df_copy = df.replace(['Multiple Crystal','Crystal'],'Crystalline')
+    df_copy = df_copy.replace(['Poorly Segmented','Incomplete'],"Not Crystalline")
+
+    #print(type(df_copy))
+    #print(df_copy)
     df_copy.dropna(subset=['Labels'],inplace=True)
     return df_copy
 
@@ -52,22 +72,19 @@ def adjust_df_list_values(df:pd.DataFrame,label_list:list[str]=["Crystal","Multi
     return df_copy
 
 def split_feature_labels(df:pd.DataFrame,features_list:list[str] = None,
-                         targets_list:list[str] = ["Labels"]):
+                         targets_list:list[str] = ["Labels"],
+                         config_path=CONFIG_JSON,
+                         regressor=True):
     
     if features_list is None:
-        with open(CONFIG_JSON,"r") as f:
-            config_dict = json.load(f)
-            features_list = config_dict["default_features"]
+        features_list = load_features(config_path)
     
     ohe = OneHotEncoder(sparse=False)
 
     X = df[features_list]
-    y = ohe(df[targets_list])
+    y = ohe.fit_transform(df[targets_list]) if regressor else df[targets_list]
 
-    return X,y
-
-
-
+    return X,y,ohe
     
 
 def categorical_data_translator(passed_list):
