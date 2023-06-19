@@ -26,7 +26,7 @@ class ImageSegmenter():
                 input_path=None,
                 pixels_to_um=9.37,
                 top_boundary=0,
-                bottom_boundary=960,
+                bottom_boundary=860,
                 left_boundary=0,
                 right_boundary=2560,
                 result_folder_path="../Results",
@@ -238,20 +238,85 @@ class ImageSegmenter():
 
         if edge_modification == None:
             return
-        elif edge_modification == "dark_bright": # Note: Probably add this as separate utility
+        elif edge_modification == "canny":
+            canny_args = [(5,5),60,120,80,80,False]
+            canny_edge = self.canny_edge(*canny_args)
+
+            self._edge_highlight = canny_edge
+            self.thresh = self.thresh-canny_edge
+
+        elif edge_modification == "variance":
             # Get Canny Edge
-            canny_args = [(3,3),80,160,80,80,False]
+            canny_args = [(5,5),60,120,80,80,False]
+            canny_edge = self.canny_edge(*canny_args)
+
+            # Make averaging kernel
+            kern_size = 7
+            n = 1/kern_size**2
+            row = [n for ii in range(kern_size)]
+            kernel_list = [row for ii in range(kern_size)]
+            kernel = np.array(kernel_list
+                            )
+            img2_blur = cv2.GaussianBlur(self.img2,(3,3),cv2.BORDER_DEFAULT)
+            img2_sq = self.img2**2
+            
+            # Get variance
+            img_edges = cv2.filter2D(img2_sq,-1,kernel)-cv2.filter2D(self.img2,-1,kernel)**2
+            img_edges[canny_edge == 0] = 0
+
+            # Make histograms for brightness/darkness heuristic
+            histogram, bin_edges = np.histogram(img_edges,bins=256)
+
+            # remove 0 vals, 255 vals
+            bin_edges = bin_edges[1:-1]
+            histogram = histogram[1:-1]
+            cut_off = bin_edges[np.argmax(histogram)]*1
+
+            # Define bright edges
+            bright_edges = copy.deepcopy(img_edges)
+            bright_edges[bright_edges < cut_off] = 0
+            bright_edges[bright_edges > 0] = 255
+
+            # define dark edges
+            dark_edges = copy.deepcopy(img_edges)
+            dark_edges[dark_edges >= cut_off] = 0
+            dark_edges[dark_edges > 0] = 255
+
+            # broaden edges for visibility, store for figure reference
+            bright_broad = cv2.GaussianBlur(bright_edges,(3,3),cv2.BORDER_DEFAULT)
+            dark_broad  = cv2.GaussianBlur(dark_edges,(3,3),cv2.BORDER_DEFAULT)
+            color_img = cv2.cvtColor(self.img2,cv2.COLOR_GRAY2RGB)
+            color_img[bright_broad > 0] = (0,0,255)
+            color_img[dark_broad > 0] = (0,255,0)
+            #color_img[(bright_broad > 0) & (dark_broad>0)] = (255,0,0)
+            self._edge_highlight = color_img
+            self._dark_edges = dark_edges
+            self._original_thresh = copy.deepcopy(self.thresh)
+
+            # Modify threshold
+            self.thresh = self.thresh-dark_edges
+
+        elif edge_modification == "darkbright": # Note: Probably add this as separate utility
+            # Get Canny Edge
+            canny_args = [(3,3),50,100,80,80,False]
             canny_edge = self.canny_edge(*canny_args)
 
             # Define sharpen kernel
             n = -1
-            m = 9
-            kernel = np.array([[n,n,n],
+            m = 5
+            kernel = np.array([[0,n,0],
                             [n,m,n],
-                            [n,n,n]]
+                            [0,n,0]]
                             )*1
-            kernel = np.ones([7,7])*n
-            kernel[3,3] = 49
+            
+            kern_size = 7
+            n = 1/kern_size**2
+            row = [n for ii in range(kern_size)]
+            kernel_list = [row for ii in range(kern_size)]
+            #kernel = np.array(kernel_list
+            #                )
+            #kernel = np.ones([7,7])*n
+            #kernel[3,3] = 49
 
             # Get just edge intensities
             img_edges = cv2.filter2D(self.img2,-1,kernel)
@@ -263,7 +328,11 @@ class ImageSegmenter():
             # remove 0 vals, 255 vals
             bin_edges = bin_edges[1:-1]
             histogram = histogram[1:-1]
-            cut_off = bin_edges[np.argmax(histogram)]
+            mode = bin_edges[np.argmax(histogram)]
+            median = np.median(img_edges[img_edges != 0])
+            mean = np.mean(img_edges[img_edges != 0])
+            self._edge_stats = f"(MED.,MODE,MEAN),({median},{mode},{mean})"
+            cut_off = median #bin_edges[np.argmax(histogram)]
 
             # Define bright edges
             bright_edges = copy.deepcopy(img_edges)
@@ -515,6 +584,7 @@ class ImageSegmenter():
         if not use_bilateral:
             print(blur_size)
             img_blur = cv2.GaussianBlur(self.img2, blur_size,0)
+            img_blur = cv2.GaussianBlur(img_blur,blur_size,0)
         else:
             img_blur = cv2.bilateralFilter(self.img2,d,ss,ss)
         self.edge = cv2.Canny(img_blur,tl,tu)

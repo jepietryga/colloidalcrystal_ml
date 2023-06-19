@@ -16,7 +16,7 @@ import copy
 import Utility.model_utils as model_utils
 
 pd.options.mode.chained_assignment = None
-
+analyze_importance=False
 # Define Save Paths
 id =  "2023_classifier"
 model_params = "original" # Inside config.json
@@ -48,7 +48,7 @@ best_model_dict = {
         "model":None,
         "f1_score":0,
     },
-    "C_MC-I_P":{
+    "C_MC-I-P":{
         "model":None,
         "f1_score":0,
     },
@@ -57,8 +57,8 @@ best_model_dict = {
         "f1_score":0,
     },
 }
-
-# Crystalline vs. Not Crystalline Split
+print(len(df))
+#i Crystalline vs. Not Crystalline Split
 for key,_ in tqdm.tqdm(best_model_dict.items()):
     df = model_utils.load_data("../Results/training_data.csv")
     if key == "C-MC_I-P":
@@ -70,7 +70,7 @@ for key,_ in tqdm.tqdm(best_model_dict.items()):
     if key == "I_P":
         df_sub = model_utils.adjust_df_list_values(df,["Incomplete","Poorly Segmented"])
         labels = ["Incomplete","Poorly Segmented"]
-    if key == "C_MC-I_P":
+    if key == "C_MC-I-P":
         new_name = "Not Crystal"
         to_replace = ["Poorly Segmented","Multiple Crystal","Incomplete"]
         df_sub = df.replace(to_replace,new_name)
@@ -80,7 +80,8 @@ for key,_ in tqdm.tqdm(best_model_dict.items()):
         labels = ["Crystal","Multiple Crystal","Incomplete","Poorly Segmented"]
 
     df_sub.dropna(inplace=True)
-    for seed in tqdm.tqdm(np.arange(10)):
+    print(df_sub.Labels.unique())
+    for seed in tqdm.tqdm(np.arange(100)):
         X,y,ohe = model_utils.split_feature_labels(df_sub,config_path=config_path,features_list=features,
                     regressor=regressor_bool)
 
@@ -114,18 +115,19 @@ for key,_ in tqdm.tqdm(best_model_dict.items()):
     save_path = os.path.join(save_folder,save_name)
     pickle.dump(best_model_dict[key], open(save_path,"wb"))
 
-    # Feature Importance analysis
-    result = permutation_importance(best_model_dict[key]["model"], X_test, y_test, n_repeats=20, random_state=seed, n_jobs=4)
-    forest_importances = pd.Series(result.importances_mean, index=features)
-    fig, ax = plt.subplots()
-    forest_importances.plot.bar(yerr=result.importances_std, ax=ax)
-    ax.set_title("Feature importances using permutation on full model")
-    ax.set_ylabel("Mean accuracy decrease")
-    fig.tight_layout()
+    if analyze_importance:
+        # Feature Importance analysis
+        result = permutation_importance(best_model_dict[key]["model"], X_test, y_test, n_repeats=20, random_state=seed, n_jobs=4)
+        forest_importances = pd.Series(result.importances_mean, index=features)
+        fig, ax = plt.subplots()
+        forest_importances.plot.bar(yerr=result.importances_std, ax=ax)
+        ax.set_title("Feature importances using permutation on full model")
+        ax.set_ylabel("Mean accuracy decrease")
+        fig.tight_layout()
     
-    save_name = f"FI_{key}.png"
-    save_path = os.path.join(save_folder,save_name)
-    plt.savefig(save_path)
+        save_name = f"FI_{key}.png"
+        save_path = os.path.join(save_folder,save_name)
+        plt.savefig(save_path)
     
 # Print Summaries
 
