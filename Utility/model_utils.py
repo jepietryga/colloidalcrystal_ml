@@ -2,6 +2,7 @@
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LogisticRegression
+from skimage import color
 import pandas as pd 
 import matplotlib.pyplot as plt 
 import scipy.stats as stat
@@ -12,10 +13,11 @@ from sklearn.model_selection import train_test_split
 from sklearn import metrics
 from collections import Counter
 import json
-
+import pandas as pd
 import sys
 sys.path.append("..")
-
+import copy
+from Utility.segmentation_utils import ImageSegmenter
 CONFIG_JSON = "config.json"
 
 def load_data(path_to_training):
@@ -110,6 +112,57 @@ def categorical_data_translator(passed_list):
     
     return num_list
 
+def generate_region_colored_image(
+        df_ml:pd.DataFrame,
+        IS:ImageSegmenter,
+        label_key:dict[tuple]= {
+                                "Crystal":(1,'blue'),
+                                "Multiple Crystal":(2,'green'),
+                                "Incomplete":(3,'red'),
+                                "Poorly Segmented":(4,'yellow')
+            }
+    ):
+    '''
+    Large visualization helper function that takes ML results, then outputs a colored image
+    By doing this, can quickly evaluate visually what the model is doing
+    '''
+    # Define working variables
+    working_img = copy.deepcopy(IS.img2)
+    marker_img = copy.deepcopy(IS.markers2)-IS.label_increment
+    label_img = copy.deepcopy(marker_img)
+    edges_logical = (marker_img < 0)
+   
+
+    # ensure no extaneous labels
+    label_img[label_img < 0] = 0
+    print(np.unique(label_img))
+    # Translate the marker image into a label image
+    for ii,row in df_ml.iterrows():
+        
+        # Get Region logical
+        region_logical = (marker_img == row["Region"])
+
+        # Get label -> value
+        label_val = (label_key[row["Labels"]][0])
+
+        # Update values
+        label_img[region_logical] = label_val
+    print(np.unique(label_img))
+    colors = [val[1] for _,val in label_key.items()]
+    color_img = color.label2rgb( label = label_img,
+                     image = working_img,
+                     colors = colors,
+                     alpha = .3,
+                     bg_label = 0,
+
+                     )
+
+    color_img[edges_logical] = (255/255,105/255,180/255)
+
+    return color_img
+                     
+    
+    
 
 def success_of_guess(y_pred,y_test,ohe):
     '''

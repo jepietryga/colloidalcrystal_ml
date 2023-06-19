@@ -8,7 +8,16 @@ from Utility import run_data_utils as rdu
 # is a FOLDER of images of similar variables (oven, mixing, etc.)
 
 image_folder = "../Images"
-experiment_list = glob.glob(image_folder+"/2023_02/*")
+input_folder = "Organized images 20230613"
+experiment_list = glob.glob(image_folder+f"/{input_folder}/*")
 
-for experiment in tqdm.tqdm(experiment_list):
-    rdu.run_experiment_folder(experiment)
+for th_mode, edge_mode in [
+#["otsu",None],
+["ensemble","darkbright"],
+#["ensemble","variance"],
+#["ensemble",None],
+#["ensemble","canny"]
+]:
+    for experiment in tqdm.tqdm(experiment_list):
+        #rdu.run_experiment_folder(experiment,threshold_mode=th_mode,edge_modification=edge_mode)
+        rdu.run_experiment_folder_tile(experiment,results_folder=f"../Results/{input_folder}_Results",threshold_mode=th_mode,edge_modification=edge_mode)
