@@ -8,14 +8,16 @@ from Utility import run_data_utils as rdu
 # is a FOLDER of images of similar variables (oven, mixing, etc.)
 
 image_folder = "../Images"
-input_folder = "Organized images 20230613"
+input_folder = "Diagnostic_Images"
 experiment_list = glob.glob(image_folder+f"/{input_folder}/*")
 
 for th_mode, edge_mode in [
-#["otsu",None],
+["otsu",None],
+#["local",None],
+#["pixel",None],
 ["ensemble","darkbright"],
 #["ensemble","variance"],
-#["ensemble",None],
+["ensemble",None],
 #["ensemble","canny"]
 ]:
     for experiment in tqdm.tqdm(experiment_list):
