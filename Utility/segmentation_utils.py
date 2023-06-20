@@ -20,6 +20,30 @@ from skimage import data, segmentation, feature, future
 from sklearn.ensemble import RandomForestClassifier
 import pickle
 
+def neighborhood_maxima(img,grid_spacing):
+    '''
+    Intended to be used for getting localized maxima, most important for modular distance transform
+    '''
+    (y_max,x_max) = np.shape(img)
+    x_spacing = np.round(np.linspace(0,x_max,grid_spacing))
+    y_spacing = np.round(np.linspace(0,y_max,grid_spacing))
+
+    print(x_spacing,y_spacing)
+    max_arr = []
+    for ii in range(grid_spacing-1):
+        for jj in range(grid_spacing-1):
+            tb = int(y_spacing[jj])
+            bb = int(y_spacing[jj+1])
+            lb = int(x_spacing[ii])
+            rb = int(x_spacing[ii+1])
+            max_arr.append(np.max(
+                    img[tb:bb,lb:rb])
+                )
+    
+    return max_arr
+
+
+
 class ImageSegmenter():
     
     def __init__(self,
@@ -119,8 +143,8 @@ class ImageSegmenter():
         kernel = self.kernel
 
         self._generate_threshold()
+        self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_OPEN, kernel,iterations = 1)
         self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_CLOSE, kernel,iterations = 3)
-
         #what is definitely your background?
         self._bg_mark = cv2.dilate(self.thresh,kernel)
 
@@ -141,14 +165,22 @@ class ImageSegmenter():
         self._dist_transform = self._dist_transform[1:-1,1:-1]
 
         #thresholding the distance transformed image
-        ret2, fg_mark = cv2.threshold(self._dist_transform, self.distance_scale*self._dist_transform.max(), 255, 0)
+        dist_maxima_arr = neighborhood_maxima(self._dist_transform,10)
+        dist_maxima_arr = np.array([maxima for maxima in dist_maxima_arr if maxima > 0])
+        dist_weighted_maxima = np.mean(dist_maxima_arr)
+        print("MAXIMA WEIGHTED/GLOBAL:", dist_weighted_maxima,self._dist_transform.max())
+        #if edge_modification:
+        #    maxima_rule = self.distance_scale*dist_weighted_maxima
+        #else:
+        maxima_rule = self.distance_scale*self._dist_transform.max()
+        ret2, fg_mark = cv2.threshold(self._dist_transform, maxima_rule, 255, 0)
         self._fg_mark = np.uint8(fg_mark)
 
         #the unknown pixels
         self.unknown = cv2.subtract(self._bg_mark, self._fg_mark)
 
         self.outputs = cv2.connectedComponentsWithStats(self._fg_mark)
-        self.label_increment = 10
+        self.label_increment = 20
 
         self.markers = self.outputs[1]+self.label_increment
 
@@ -156,13 +188,37 @@ class ImageSegmenter():
         temp_markers = copy.deepcopy(self.markers)
         self.markers2 = cv2.watershed(self.img3,temp_markers)
 
-    def _otsu_threshold(self,blur=None):
+    def _otsu_threshold_(self,blur=None):
         '''
         Otsu thresholding
         '''
         threshable = self.img2 if not blur else cv2.GaussianBlur(self.img2, self.blur_size,0)
         ret, thresh = cv2.threshold(threshable, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
         return ret, thresh
+    
+    def _otsu_threshold(self,blur=None):
+        '''
+        skimage otsu
+        '''
+        from skimage.filters import threshold_otsu
+
+        threshable = self.img2 if not blur else cv2.GaussianBlur(self.img2, self.blur_size,0)
+        ret, thresh = cv2.threshold(threshable, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+        print(type(thresh[0,0]))
+        print(np.unique(thresh))
+        thresh_val = threshold_otsu(self.img2)
+        thresh_held = ((((self.img2 > thresh_val).astype(np.uint8))))
+        thresh = copy.deepcopy(thresh_held)
+        print(thresh)
+        thresh[thresh_held ==0] = 255
+        thresh[thresh_held != 0] = 0
+        print(thresh)
+        print(np.unique(thresh))
+        print(type(thresh[0,0]))
+        plt.imsave("thresh.png",thresh)
+        plt.imsave("thresh_held.png",thresh_held)
+        
+        return None, thresh_held*255
 
     def _pixel_threshold(self):
         '''
@@ -268,6 +324,7 @@ class ImageSegmenter():
             histogram, bin_edges = np.histogram(img_edges,bins=256)
 
             # remove 0 vals, 255 vals
+            
             bin_edges = bin_edges[1:-1]
             histogram = histogram[1:-1]
             cut_off = bin_edges[np.argmax(histogram)]*1
@@ -298,33 +355,35 @@ class ImageSegmenter():
 
         elif edge_modification == "darkbright": # Note: Probably add this as separate utility
             # Get Canny Edge
-            canny_args = [(3,3),50,100,80,80,False]
+            canny_args = [(3,3),35,70,80,80,False]
             canny_edge = self.canny_edge(*canny_args)
 
             # Define sharpen kernel
             n = -1
             m = 5
-            kernel = np.array([[0,n,0],
+            sharpen_kernel = np.array([[0,n,0],
                             [n,m,n],
                             [0,n,0]]
                             )*1
             
-            kern_size = 7
+            kern_size = 3
             n = 1/kern_size**2
             row = [n for ii in range(kern_size)]
             kernel_list = [row for ii in range(kern_size)]
-            #kernel = np.array(kernel_list
-            #                )
+            avg_kernel = np.array(kernel_list)
+            
             #kernel = np.ones([7,7])*n
             #kernel[3,3] = 49
 
             # Get just edge intensities
-            img_edges = cv2.filter2D(self.img2,-1,kernel)
+            img_edges = cv2.filter2D(self.img2,-1,sharpen_kernel)
+            #canny_edge = cv2.Canny(img_edges,50,100)
+            img_edges = cv2.filter2D(self.img2,-1,avg_kernel)
+
             img_edges[canny_edge == 0] = 0
 
             # Make histograms for brightness/darkness heuristic
-            histogram, bin_edges = np.histogram(img_edges,bins=256)
-
+            histogram, bin_edges = np.histogram(img_edges,bins=256) #256
             # remove 0 vals, 255 vals
             bin_edges = bin_edges[1:-1]
             histogram = histogram[1:-1]
@@ -332,7 +391,7 @@ class ImageSegmenter():
             median = np.median(img_edges[img_edges != 0])
             mean = np.mean(img_edges[img_edges != 0])
             self._edge_stats = f"(MED.,MODE,MEAN),({median},{mode},{mean})"
-            cut_off = median #bin_edges[np.argmax(histogram)]
+            cut_off = np.max([median,mean,mode]) #bin_edges[np.argmax(histogram)]
 
             # Define bright edges
             bright_edges = copy.deepcopy(img_edges)
@@ -343,6 +402,7 @@ class ImageSegmenter():
             dark_edges = copy.deepcopy(img_edges)
             dark_edges[dark_edges > cut_off] = 0
             dark_edges[dark_edges > 0] = 255
+            print(np.unique(dark_edges))
 
             # broaden edges for visibility, store for figure reference
             bright_broad = cv2.GaussianBlur(bright_edges,(3,3),cv2.BORDER_DEFAULT)
@@ -584,10 +644,11 @@ class ImageSegmenter():
         if not use_bilateral:
             print(blur_size)
             img_blur = cv2.GaussianBlur(self.img2, blur_size,0)
-            img_blur = cv2.GaussianBlur(img_blur,blur_size,0)
+            #img_blur = cv2.GaussianBlur(img_blur,blur_size,0)
         else:
             img_blur = cv2.bilateralFilter(self.img2,d,ss,ss)
-        self.edge = cv2.Canny(img_blur,tl,tu)
+        self.edge = cv2.Canny(img_blur,tl,tu,apertureSize=3
+                              )
         return self.edge
 
     
