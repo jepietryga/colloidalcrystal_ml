@@ -181,8 +181,8 @@ class ImageSegmenter():
         kernel = self.kernel
 
         self._generate_threshold()
-        self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_OPEN, kernel,iterations = 2)
-        self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_CLOSE, kernel,iterations = 10)
+        self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_OPEN, kernel,iterations = 1)
+        self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_CLOSE, kernel,iterations = 3)
         #what is definitely your background?
         self._bg_mark = cv2.dilate(self.thresh,kernel)
 
@@ -381,7 +381,7 @@ class ImageSegmenter():
             # broaden edges for visibility, store for figure reference
             bright_broad = cv2.GaussianBlur(bright_edges,(3,3),cv2.BORDER_DEFAULT)
             dark_broad  = cv2.GaussianBlur(dark_edges,(3,3),cv2.BORDER_DEFAULT)
-            color_img = cv2.cvtColor(self.img2,cv2.COLOR_GRAY2RGB)
+            color_img = cv2.cvtColor(rangself.img2,cv2.COLOR_GRAY2RGB)
             color_img[bright_broad > 0] = (0,0,255)
             color_img[dark_broad > 0] = (0,255,0)
             #color_img[(bright_broad > 0) & (dark_broad>0)] = (255,0,0)
@@ -394,7 +394,7 @@ class ImageSegmenter():
 
         elif edge_modification == "darkbright": # Note: Probably add this as separate utility
             # Get Canny Edge
-            canny_args = [(9,9),40,50,80,80,False]
+            canny_args = [(5,5),30,50,80,80,False]
             canny_edge = self.canny_edge(*canny_args)
 
             # Define sharpen kernel
@@ -418,8 +418,7 @@ class ImageSegmenter():
             #img_edges = cv2.filter2D(self.img2,-1,sharpen_kernel)
             #canny_edge = cv2.Canny(img_edges,50,100)
             img_edges = cv2.filter2D(self.img2,-1,avg_kernel)
-            img_edges = cv2.GaussianBlur(self.img2, (5,5),0)
-            img_edges = kernel_range(img_edges,5).astype(np.uint8)
+            img_edges = kernel_minima(img_edges,5).astype(np.uint8)
 
             img_edges[canny_edge == 0] = 0
 
@@ -432,7 +431,7 @@ class ImageSegmenter():
             median = np.median(img_edges[img_edges != 0])
             mean = np.mean(img_edges[img_edges != 0])
             self._edge_stats = f"(MED.,MODE,MEAN),({median},{mode},{mean})"
-            cut_off = np.mean([median,mean,mode])*1.2 #bin_edges[np.argmax(histogram)]
+            cut_off = median#np.min([median,mean,mode])*1 #bin_edges[np.argmax(histogram)]
 
             # Define bright edges
             bright_edges = copy.deepcopy(img_edges)
