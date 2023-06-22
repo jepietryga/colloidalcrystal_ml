@@ -9,6 +9,9 @@ from Utility import run_data_utils as rdu
 
 image_folder = "../Images"
 input_folder = "Diagnostic_Images"
+#input_folder =  "Organized images 20230613"
+#input_folder = "Organized_Images"
+file_id = "Testing"
 experiment_list = glob.glob(image_folder+f"/{input_folder}/*")
 
 for th_mode, edge_mode in [
@@ -22,4 +25,5 @@ for th_mode, edge_mode in [
 ]:
     for experiment in tqdm.tqdm(experiment_list):
         #rdu.run_experiment_folder(experiment,threshold_mode=th_mode,edge_modification=edge_mode)
-        rdu.run_experiment_folder_tile(experiment,results_folder=f"../Results/{input_folder}_Results",threshold_mode=th_mode,edge_modification=edge_mode)
+        #rdu.run_experiment_folder_tile(experiment,results_folder=f"../Results/{input_folder}_Results_20230620",threshold_mode=th_mode,edge_modification=edge_mode)
+        rdu.run_experiment_folder_tile(experiment,results_folder=f"../Results/{input_folder}_{file_id}",threshold_mode=th_mode,edge_modification=edge_mode)
