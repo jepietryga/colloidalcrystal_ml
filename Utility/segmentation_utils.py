@@ -483,6 +483,9 @@ class ImageSegmenter():
             data_arr.append(self._grab_region(self.img2,region_oi,alpha=0,buffer=5))
             ii += 1
         return data_arr
+    @cached_property
+    def region_dict(self):
+        return self.grab_region_dict(focused=True,alpha=.3)
     
     def grab_region_array(self,focused=True):
         '''
@@ -502,6 +505,18 @@ class ImageSegmenter():
                 data_arr.append(self._grab_region(self.img2,region_oi,alpha=0,buffer=np.inf))
             ii += 1
         return data_arr
+    
+    def grab_region_dict(self,focused=True,alpha=.3):
+        self.df # Make sure this is initiated
+        regions_list = list(self.df["Region"])
+        data_dict = {}
+        for region in regions_list: # 1-Offset for counting purposes
+            region_oi = region+self.label_increment
+            if focused:
+                data_dict[region] = self._grab_region(self.img2,region_oi,alpha=alpha,buffer=5)
+            if not focused:
+                data_dict[region] = self._grab_region(self.img2,region_oi,alpha=alpha,buffer=np.inf)
+        return data_dict
 
     def begin_labeling(self):
         self.df # To ensure it's been initialized
