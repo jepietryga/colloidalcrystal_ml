@@ -15,13 +15,15 @@ file_id = "Testing"
 experiment_list = glob.glob(image_folder+f"/{input_folder}/*")
 
 for th_mode, edge_mode in [
-["otsu",None],
-#["local",None],
+#["otsu",None],
+["local",None],
 #["pixel",None],
-["ensemble","darkbright"],
+#["ensemble","darkbright"],
 #["ensemble","variance"],
-["ensemble",None],
+#["ensemble",None],
 #["ensemble","canny"]
+["ensemble","classifier"],
+["ensemble","localthresh"]
 ]:
     for experiment in tqdm.tqdm(experiment_list):
         #rdu.run_experiment_folder(experiment,threshold_mode=th_mode,edge_modification=edge_mode)
