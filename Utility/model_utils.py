@@ -160,12 +160,16 @@ def generate_region_colored_image(
     color_img[edges_logical] = (255/255,105/255,180/255)
 
     return color_img
-                     
-    
-    
+
+def ai_vs_human(img_folder_path:str,
+                img_name:str):
+    '''
+    Given a folder_path and img_name
+    '''                     
 
 def success_of_guess(y_pred,y_test,ohe):
     '''
+    DEPRECATED
     Given the predicted results, for each label, how does our model perform?
 
     Args:
