@@ -248,7 +248,7 @@ def create_formatted_df():
     Easiest Load-in technique: look for 'L-'
     Can use this to more easily query the data
     '''
-    path_total = glob.glob("../Results/*") 
+    path_total = glob.glob("../Results/*.csv") 
     path_list = [p for p in path_total if "L-" in p and "Images" not in p]
     print(path_list)
     df_arr = []
@@ -303,20 +303,23 @@ if __name__ == "__main__":
     #    (df_master.concentration == 2.5) &
         (~df_master.mixing) &
         (~df_master.oven) &
-        (df_master.edge == "darkbright")
+        (df_master.edge == "None") &
+        (df_master.thresh == "otsu")
         ]
     exp_list = np.unique(sub_df.file)
     fig = plot_feature_with_experiments_gaussian('area',exp_list)
-    fig = plot_feature_with_experiments_schultz_zimm('area',exp_list)
+    #fig = plot_feature_with_experiments_schultz_zimm('area',exp_list)
     plt.savefig("Test.png")
 
     # Try and make RC's 2-D plot
     df_master = df_master.apply(row_fit_gaussian,axis=1)
+    sub_df = sub_df.apply(row_fit_gaussian,axis=1)
     
     print(df_master.keys())
     
     df_master = df_master.sort_values(by=["concentration","linker"])
-    print(df_master[['linker','concentration',"A","mu","sig","r2"]])
+    
+    print(sub_df[['linker','concentration',"A","mu","sig","r2"]])
     fig,ax = plt.subplots()
     im = ax.scatter(
             [str(l) for l in df_master.linker],

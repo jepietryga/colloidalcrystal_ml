@@ -17,7 +17,6 @@ from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
 from functools import partial
 from skimage import data, segmentation, feature, future
-from skimage.filters import threshold_local
 from sklearn.ensemble import RandomForestClassifier
 import pickle
 
@@ -66,19 +65,6 @@ def get_padded_stack(img,kernel_dim):
 
     img_ret = img_stack[:,pad_width:pad_width*-1,pad_width:pad_width*-1]
     return img_ret
-
-def quick_close(img,kernel,neighbor_threshold=4):
-    '''
-    Given a binary image, see which "holes" to clsoe based on the number of hole neighbors
-    '''
-    img_ret = get_padded_stack(img,kernel)
-
-    original_logical = img == 0
-    stack_logical = np.sum(img_ret,axis=0) <= ((kernel**2)-(1+neighbor_threshold)) #+1 acccounts for self, <= because holes
-
-    img_close = copy.deepcopy(img)
-    img_close[original_logical & ~stack_logical] = 1
-    return img_close
 
 def kernel_minima(img,kernel_dim:int):
     img_ret = np.min(get_padded_stack(img,kernel_dim),axis=0)
@@ -131,7 +117,6 @@ class ImageSegmenter():
         self.override_exists = override_exists
         self.threshold_mode = threshold_mode
         self.edge_modification = edge_modification
-        
 
         # Derived Variables
         if isinstance(input_path,str):
@@ -156,7 +141,6 @@ class ImageSegmenter():
 
         # Custom Pixel Classifier Variables
         self.pixel_model = None
-        self.edge_model = None
 
         self.process_images(edge_modification=self.edge_modification)
 
@@ -197,15 +181,15 @@ class ImageSegmenter():
         kernel = self.kernel
 
         self._generate_threshold()
-        #self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_OPEN, kernel,iterations = 2)
-        #self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_CLOSE, kernel,iterations = 2)
+        self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_OPEN, kernel,iterations = 1)
+        self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_CLOSE, kernel,iterations = 3)
         #what is definitely your background?
         self._bg_mark = cv2.dilate(self.thresh,kernel)
 
         #apply distance transform
         if edge_modification:
             self._perform_edge_modification() # Adds "background" for dist transform to catch 
-        #self.thresh = quick_close(self.thresh,3,1)
+        
         # Add 0 border, distance transform, remove 0 border
         thresh_border = cv2.copyMakeBorder(self.thresh,
                                             top=1,
@@ -307,13 +291,8 @@ class ImageSegmenter():
         '''
         Use Adaptive (local) threhsolding
         '''
-        img2_blur = cv2.GaussianBlur(self.img2,(9,9),cv2.BORDER_DEFAULT)
         thresh = cv2.adaptiveThreshold(self.img2,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                             cv2.THRESH_BINARY,53,10)
-        tl = (img2_blur > threshold_local(img2_blur,35,offset=10)).astype(np.uint8)*255
-        tl = quick_close(tl,3,4)
-        cv2.imwrite(self._file_name+"_lt_test.png",tl)
-        return tl
         return thresh
 
     def _generate_threshold(self,blur=None,threshold_mode=None):
@@ -341,44 +320,7 @@ class ImageSegmenter():
                         | (thresh_otsu & thresh_local)
             self.thresh = ensemble.astype(np.uint8)*255
             return
-
-    def load_edge_classifier(self):
-        '''
-        Load the pixel classifer. Is a LARGE model, so only use this if needed
-        '''
-        if not self.edge_model:
-                with open("../Models/edge_classifier.pickle","rb") as f:
-                    self.edge_model = pickle.load(f)
-
-    def _edge_pixel_classifier(self):
-        '''
-        Experimental:
-        Given a RandomForest pixel classifier, identify which edges are valid overlap or facet
         
-        '''
-        # Load model
-        self.load_edge_classifier()
-
-        # Featurize Image
-        sigma_min = 1
-        sigma_max = 32
-        features_func = partial(feature.multiscale_basic_features,
-                        intensity=False, edges=True, texture=True,
-                        sigma_min=sigma_min, sigma_max=sigma_max,
-                        channel_axis=None)
-        features = features_func(self.img2)
-
-        # Flatten features
-        (x,y,z) = features.shape
-        features = features.reshape(x*y,z)
-
-        # Predict
-        results = future.predict_segmenter(features,self.edge_model)
-
-        # Reshape
-        thresh = 255*(results.reshape(x,y).astype(np.uint8)-1) # To make Overlap and Facet
-        return thresh
-
     def _perform_edge_modification(self, edge_modification = None):
         '''
         Perform edge modification of threshold using internal schemes
@@ -439,7 +381,7 @@ class ImageSegmenter():
             # broaden edges for visibility, store for figure reference
             bright_broad = cv2.GaussianBlur(bright_edges,(3,3),cv2.BORDER_DEFAULT)
             dark_broad  = cv2.GaussianBlur(dark_edges,(3,3),cv2.BORDER_DEFAULT)
-            color_img = cv2.cvtColor(self.img2,cv2.COLOR_GRAY2RGB)
+            color_img = cv2.cvtColor(rangself.img2,cv2.COLOR_GRAY2RGB)
             color_img[bright_broad > 0] = (0,0,255)
             color_img[dark_broad > 0] = (0,255,0)
             #color_img[(bright_broad > 0) & (dark_broad>0)] = (255,0,0)
@@ -452,7 +394,7 @@ class ImageSegmenter():
 
         elif edge_modification == "darkbright": # Note: Probably add this as separate utility
             # Get Canny Edge
-            canny_args = [(9,9),40,50,80,80,False]
+            canny_args = [(5,5),30,50,80,80,False]
             canny_edge = self.canny_edge(*canny_args)
 
             # Define sharpen kernel
@@ -476,8 +418,7 @@ class ImageSegmenter():
             #img_edges = cv2.filter2D(self.img2,-1,sharpen_kernel)
             #canny_edge = cv2.Canny(img_edges,50,100)
             img_edges = cv2.filter2D(self.img2,-1,avg_kernel)
-            img_edges = cv2.GaussianBlur(self.img2, (5,5),0)
-            img_edges = kernel_range(img_edges,5).astype(np.uint8)
+            img_edges = kernel_minima(img_edges,5).astype(np.uint8)
 
             img_edges[canny_edge == 0] = 0
 
@@ -490,7 +431,7 @@ class ImageSegmenter():
             median = np.median(img_edges[img_edges != 0])
             mean = np.mean(img_edges[img_edges != 0])
             self._edge_stats = f"(MED.,MODE,MEAN),({median},{mode},{mean})"
-            cut_off = np.mean([median,mean,mode])*1.2 #bin_edges[np.argmax(histogram)]
+            cut_off = median#np.min([median,mean,mode])*1 #bin_edges[np.argmax(histogram)]
 
             # Define bright edges
             bright_edges = copy.deepcopy(img_edges)
@@ -516,83 +457,6 @@ class ImageSegmenter():
 
             # Modify threshold
             self.thresh = self.thresh-dark_edges
-
-        elif edge_modification == "classifier":
-            # Get masking info
-            mask = self._edge_pixel_classifier()
-            img_logical = mask == 0
-
-            # Get Canny Edge
-            canny_args = [(5,5),20,60,80,80,False]
-            canny_edge = self.canny_edge(*canny_args)
-            img_edges = canny_edge
-            self._edge_stats = None
-
-            # Define bright edges
-            bright_edges = copy.deepcopy(img_edges)
-            bright_edges[img_logical] = 0
-            bright_edges[bright_edges > 0] = 255
-
-            # define dark edges
-            dark_edges = copy.deepcopy(img_edges)
-            dark_edges[~img_logical] = 0
-            dark_edges[dark_edges > 0] = 255
-
-            # broaden edges for visibility, store for figure reference
-            bright_broad = cv2.GaussianBlur(bright_edges,(3,3),cv2.BORDER_DEFAULT)
-            dark_broad  = cv2.GaussianBlur(dark_edges,(3,3),cv2.BORDER_DEFAULT)
-            color_img = cv2.cvtColor(self.img2,cv2.COLOR_GRAY2RGB)
-            color_img[bright_broad > 0] = (0,0,255)
-            color_img[dark_broad > 0] = (0,255,0)
-            #color_img[(bright_broad > 0) & (dark_broad>0)] = (255,0,0)
-            self._edge_highlight = color_img
-            self._dark_edges = dark_edges
-            self._original_thresh = copy.deepcopy(self.thresh)
-
-            # Modify threshold
-            self.thresh = self.thresh-dark_edges
-            
-        elif edge_modification == "localthresh":
-            # Get Masking info
-            img2_blur = cv2.GaussianBlur(self.img2,(9,9),cv2.BORDER_DEFAULT)
-            thresh = threshold_local(img2_blur,35,offset=10)
-            mask = self.img2 > thresh
-            mask = quick_close(mask,3,neighbor_threshold=7)
-            #mask = cv2.morphologyEx(mask.astype(np.uint8),)
-            mask = cv2.dilate(mask.astype(np.uint8),np.ones([3,3]))
-            mask = cv2.erode(mask.astype(np.uint8),np.ones([3,3]),iterations=2)
-            img_logical = mask == 0
-            cv2.imwrite(f"localthresh{self._file_name}.png",img_logical.astype(np.uint8)*255)
-            # Get Canny Edge
-            canny_args = [(5,5),20,60,80,80,False]
-            canny_edge = self.canny_edge(*canny_args)
-            img_edges = canny_edge
-            self._edge_stats = None
-
-            # Define bright edges
-            bright_edges = copy.deepcopy(img_edges)
-            bright_edges[img_logical] = 0
-            bright_edges[bright_edges > 0] = 255
-
-            # define dark edges
-            dark_edges = copy.deepcopy(img_edges)
-            dark_edges[~img_logical] = 0
-            dark_edges[dark_edges > 0] = 255
-
-            # broaden edges for visibility, store for figure reference
-            bright_broad = cv2.GaussianBlur(bright_edges,(3,3),cv2.BORDER_DEFAULT)
-            dark_broad  = cv2.GaussianBlur(dark_edges,(3,3),cv2.BORDER_DEFAULT)
-            color_img = cv2.cvtColor(self.img2,cv2.COLOR_GRAY2RGB)
-            color_img[bright_broad > 0] = (0,0,255)
-            color_img[dark_broad > 0] = (0,255,0)
-            #color_img[(bright_broad > 0) & (dark_broad>0)] = (255,0,0)
-            self._edge_highlight = color_img
-            self._dark_edges = dark_edges
-            self._original_thresh = copy.deepcopy(self.thresh)
-
-            # Modify threshold
-            self.thresh = self.thresh-dark_edges
-
 
     def load_pixel_segmenter(self):
         '''
@@ -719,9 +583,6 @@ class ImageSegmenter():
             data_arr.append(self._grab_region(self.img2,region_oi,alpha=0,buffer=5))
             ii += 1
         return data_arr
-    @cached_property
-    def region_dict(self):
-        return self.grab_region_dict(focused=True,alpha=.7)
     
     def grab_region_array(self,focused=True):
         '''
@@ -741,18 +602,6 @@ class ImageSegmenter():
                 data_arr.append(self._grab_region(self.img2,region_oi,alpha=0,buffer=np.inf))
             ii += 1
         return data_arr
-    
-    def grab_region_dict(self,focused=True,alpha=.7):
-        self.df # Make sure this is initiated
-        regions_list = list(self.df["Region"])
-        data_dict = {}
-        for region in regions_list: # 1-Offset for counting purposes
-            region_oi = region+self.label_increment
-            if focused:
-                data_dict[region] = self._grab_region(self.img3,region_oi,alpha=alpha,buffer=15)
-            if not focused:
-                data_dict[region] = self._grab_region(self.img3,region_oi,alpha=alpha,buffer=np.inf)
-        return data_dict
 
     def begin_labeling(self):
         self.df # To ensure it's been initialized

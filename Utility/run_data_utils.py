@@ -170,6 +170,8 @@ def run_experiment_folder_tile(experiment_path:str,
     Get results from this experiment and save them in ../Results based on experiment folder name
     6_set describes the output visualization
     '''
+    # Make sure folder is there for results
+    os.makedirs(results_folder,exist_ok=True)
     added_tags = []
 
     # define additional tags and save paths
