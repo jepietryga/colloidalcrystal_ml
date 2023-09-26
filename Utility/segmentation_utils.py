@@ -249,31 +249,6 @@ class ImageSegmenter():
         threshable = self.img2 if not blur else cv2.GaussianBlur(self.img2, self.blur_size,0)
         ret, thresh = cv2.threshold(threshable, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
         return ret, thresh
-    
-    def _otsu_threshold_(self,blur=None):
-        '''
-        DEPRECATED
-        skimage otsu
-        '''
-        from skimage.filters import threshold_otsu
-
-        threshable = self.img2 if not blur else cv2.GaussianBlur(self.img2, self.blur_size,0)
-        ret, thresh = cv2.threshold(threshable, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-        print(type(thresh[0,0]))
-        print(np.unique(thresh))
-        thresh_val = threshold_otsu(self.img2)
-        thresh_held = ((((self.img2 > thresh_val).astype(np.uint8))))
-        thresh = copy.deepcopy(thresh_held)
-        print(thresh)
-        thresh[thresh_held ==0] = 255
-        thresh[thresh_held != 0] = 0
-        print(thresh)
-        print(np.unique(thresh))
-        print(type(thresh[0,0]))
-        plt.imsave("thresh.png",thresh)
-        plt.imsave("thresh_held.png",thresh_held)
-        
-        return None, thresh_held*255
 
     def _pixel_threshold(self):
         '''
@@ -342,7 +317,7 @@ class ImageSegmenter():
             self.thresh = ensemble.astype(np.uint8)*255
             return
 
-    def load_edge_classifier(self):
+    def _load_edge_classifier(self):
         '''
         Load the pixel classifer. Is a LARGE model, so only use this if needed
         '''
@@ -357,7 +332,7 @@ class ImageSegmenter():
         
         '''
         # Load model
-        self.load_edge_classifier()
+        self._load_edge_classifier()
 
         # Featurize Image
         sigma_min = 1
@@ -501,7 +476,6 @@ class ImageSegmenter():
             dark_edges = copy.deepcopy(img_edges)
             dark_edges[dark_edges > cut_off] = 0
             dark_edges[dark_edges > 0] = 255
-            print(np.unique(dark_edges))
 
             # broaden edges for visibility, store for figure reference
             bright_broad = cv2.GaussianBlur(bright_edges,(3,3),cv2.BORDER_DEFAULT)
@@ -592,6 +566,10 @@ class ImageSegmenter():
 
             # Modify threshold
             self.thresh = self.thresh-dark_edges
+        
+        # Finally, make sure we have a reference for the created edges
+        # This is used for "FACET SCORE"
+        self._img_edge = copy.deepcopy(canny_edge)
 
 
     def load_pixel_segmenter(self):
@@ -673,7 +651,6 @@ class ImageSegmenter():
         self.number_labels = len(clusters['area'])
         labeling_list = [None] * self.number_labels
         filename_list = [self.input_path] * self.number_labels
-        #print(clusters['label'])
         clusters['Labels'] = labeling_list
         clusters['Filename'] = filename_list
         clusters['Region'] = clusters['label']
@@ -723,11 +700,13 @@ class ImageSegmenter():
     def region_dict(self):
         return self.grab_region_dict(focused=True,alpha=.7)
     
-    def grab_region_array(self,focused=True):
+    def grab_region_array(self,img_oi=None,focused=True):
         '''
         Grab an array of images that are bounded (focused) or the same size as img2 (nopt focused)
         Can be useful for quickly making bools of regions
         '''
+        if img_oi is None:
+            img_oi = self.img2
         self.df # Make sure this is initiated
         data_arr = []
         ii = 0
@@ -736,9 +715,9 @@ class ImageSegmenter():
         while ii < len(regions_list): # 1-Offset for counting purposes
             region_oi = regions_list[ii]+self.label_increment
             if focused:
-                data_arr.append(self._grab_region(self.img2,region_oi,alpha=0,buffer=5))
+                data_arr.append(self._grab_region(img_oi,region_oi,alpha=0,buffer=5))
             if not focused:
-                data_arr.append(self._grab_region(self.img2,region_oi,alpha=0,buffer=np.inf))
+                data_arr.append(self._grab_region(img_oi,region_oi,alpha=0,buffer=np.inf))
             ii += 1
         return data_arr
     
