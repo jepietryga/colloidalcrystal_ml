@@ -165,7 +165,8 @@ def ai_vs_human(img_folder_path:str,
                 img_name:str):
     '''
     Given a folder_path and img_name
-    '''                     
+    '''          
+    raise NotImplemented           
 
 def success_of_guess(y_pred,y_test,ohe):
     '''
