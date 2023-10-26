@@ -10,3 +10,6 @@ Images
 
 # Larger Models
 Models/bg_segmenter.pickle
+
+# Most png are not necessary
+*.png

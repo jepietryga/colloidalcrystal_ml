@@ -27,7 +27,7 @@ os.makedirs(save_folder,exist_ok=True)
 # Load Data
 config_path="../Utility/config.json"
 features = json.load(open(config_path,"r"))["default_features"]
-df = model_utils.load_data("../Results/training_data.csv")
+df_load = model_utils.load_data("../Results/training_data.csv")
 
 param_dict = model_utils.load_params(model_params,config_path)
 
@@ -60,7 +60,7 @@ best_model_dict = {
 print(len(df))
 #i Crystalline vs. Not Crystalline Split
 for key,_ in tqdm.tqdm(best_model_dict.items()):
-    df = model_utils.load_data("../Results/training_data.csv")
+    df = df_load.copy()
     if key == "C-MC_I-P":
         df_sub = model_utils.adjust_df_crystal_noncrystal_data(df)
         labels = ["Crystalline","Not Crystalline"]

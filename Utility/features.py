@@ -2,7 +2,6 @@
 # those provided as part of skimage regionprops
 
 import sys
-print(sys.path)
 import segmentation_utils as su
 import pandas as pd
 import numpy as np
@@ -25,7 +24,7 @@ def facet_score(image_segmenter:su.ImageSegmenter):
     def row_facet_score(row:pd.Series):
         marker_val = row.Region + image_segmenter.label_increment
         region_mask = (markers2 == marker_val)
-        edges = copy.deepcopy(image_segmenter._img_edge)
+        edges = copy.deepcopy(image_segmenter.img_edge)
         
         # Isolate the edge pixels
         edges[~region_mask] = 0
@@ -44,3 +43,12 @@ def facet_score(image_segmenter:su.ImageSegmenter):
     df["facet_score"] = df.apply(row_facet_score,axis=1)
 
         
+def merge_new_features(df_left,df_right,feature_to_merge,columns_to_merge_on):
+    '''
+    The goal of this is to merge feature_to_merge from df_right into df_left 
+    This requires that both df have their columns to merge on identical 
+    '''
+    df_right_reduced = df_right[[feature_to_merge,*columns_to_merge_on]]
+    df_adjusted = pd.merge(left=df_left,right=df_right_reduced,on=columns_to_merge_on)
+    return df_adjusted
+    raise NotImplemented
