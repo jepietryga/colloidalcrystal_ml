@@ -10,3 +10,7 @@ Images
 
 # Larger Models
 Models/bg_segmenter.pickle
+Models/detectron2/model_final.pth
+
+# Most png are not necessary
+*.png
