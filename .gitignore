@@ -14,3 +14,5 @@ Models/detectron2/model_final.pth
 
 # Most png are not necessary
 *.png
+
+facet_ml/static/Models/*
