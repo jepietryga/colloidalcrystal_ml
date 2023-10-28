@@ -368,7 +368,8 @@ class ImageSegmenter():
             if file_present and not self.override_exists:
                 df = pd.read_csv(self._csv_file)
                 self.number_labels = len(df['area'])
-                return pd.read_csv(self._csv_file)
+                self._df = pd.read_csv(self._csv_file)
+                return self._df
 
             propList = ['area',
                 'equivalent_diameter', 
