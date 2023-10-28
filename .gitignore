@@ -9,10 +9,8 @@ Results
 Images
 
 # Larger Models
-Models/bg_segmenter.pickle
-Models/detectron2/model_final.pth
+facet_ml/static/Models/bg_segmenter.pickle
+facet_ml/static/Models/detectron2/model_final.pth
 
 # Most png are not necessary
 *.png
-
-facet_ml/static/Models/*
