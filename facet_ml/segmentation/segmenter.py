@@ -21,6 +21,7 @@ from skimage.filters import threshold_local
 from sklearn.ensemble import RandomForestClassifier
 import pickle
 from pathlib import Path
+from typing import Union
 
 from facet_ml.segmentation import edge_modification as em
 from facet_ml.segmentation import thresholding
@@ -38,8 +39,8 @@ class ImageSegmenter():
                 right_boundary=2560,
                 result_folder_path="../../Results",
                 override_exists=False,
-                threshold_mode:function|str = "otsu",
-                edge_modification:function|str = None,
+                threshold_mode:Union[callable,str] = "otsu",
+                edge_modification:Union[callable,str] = None,
                 file_str = None
                 ):
         '''
@@ -100,6 +101,9 @@ class ImageSegmenter():
         # hidden variables
         self._img_edge = None
         self._label_increment = 20
+        self._df = None
+        self._region_arr = None
+        self._region_dict = None
 
 
         self.process_images(edge_modification=self.edge_modification)
@@ -157,7 +161,8 @@ class ImageSegmenter():
 
         ## Threshold and Get background
         kernel = self.kernel
-        self._generate_threshold()
+
+        self.thresh = self._generate_threshold()
         self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_OPEN, kernel,iterations = 2)
         self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_CLOSE, kernel,iterations = 2)
         
@@ -216,9 +221,9 @@ class ImageSegmenter():
             thresh = thresholding.local_threshold(self)
         
         elif threshold_mode == "ensemble":
-            thresh_otsu = self._otsu_threshold(blur)[1].astype(bool)
-            thresh_local = self._local_threshold().astype(bool)
-            thresh_pixel = self._pixel_threshold().astype(bool)
+            thresh_otsu = thresholding.otsu_threshold(self,blur)[1].astype(bool)
+            thresh_local = thresholding.local_threshold(self).astype(bool)
+            thresh_pixel = thresholding.pixel_threshold(self).astype(bool)
             ensemble = ( (thresh_pixel) & (thresh_local | thresh_otsu)) \
                         | (thresh_otsu & thresh_local)
             thresh = ensemble.astype(np.uint8)*255
@@ -337,7 +342,7 @@ class ImageSegmenter():
         Load the pixel classifer. Is a LARGE model, so only use this if needed
         '''
         if not self.pixel_model:
-                with open("../static/Models/bg_segmenter.pickle","rb") as f:
+                with open(STATIC_MODELS["bg_segmenter"],"rb") as f:
                     self.pixel_model = pickle.load(f)
 
     def decorate_regions(self):
@@ -356,67 +361,70 @@ class ImageSegmenter():
         return
 
 
-    @cached_property # NOTE: Cached Property is basically a memoized function
+    @property # NOTE: Cached Property is basically a memoized function
     def df(self): # Might not actually want this to be cached if we're making this interactive...
-        file_present = os.path.isfile(self._csv_file)
-        if file_present and not self.override_exists:
-            df = pd.read_csv(self._csv_file)
-            self.number_labels = len(df['area'])
-            return pd.read_csv(self._csv_file)
+        if self._df is None:
+            file_present = os.path.isfile(self._csv_file)
+            if file_present and not self.override_exists:
+                df = pd.read_csv(self._csv_file)
+                self.number_labels = len(df['area'])
+                return pd.read_csv(self._csv_file)
 
-        propList = ['area',
-            'equivalent_diameter', 
-            'orientation', 
-            'major_axis_length',
-            'minor_axis_length',
-            'perimeter',
-            'min_intensity',
-            'mean_intensity',
-            'max_intensity',
-            'solidity',
-            'eccentricity',
-            'centroid_local',
-            'feret_diameter_max',
-            'moments',
-            'moments_central',
-            'moments_hu',
-            'label'
-            ]
-        clusters = measure.regionprops_table(self.markers2-self._label_increment, self.image_cropped,properties=propList)
+            propList = ['area',
+                'equivalent_diameter', 
+                'orientation', 
+                'major_axis_length',
+                'minor_axis_length',
+                'perimeter',
+                'min_intensity',
+                'mean_intensity',
+                'max_intensity',
+                'solidity',
+                'eccentricity',
+                'centroid_local',
+                'feret_diameter_max',
+                'moments',
+                'moments_central',
+                'moments_hu',
+                'label'
+                ]
+            clusters = measure.regionprops_table(self.markers2-self._label_increment, self.image_cropped,properties=propList)
 
-        scaled_features = ['equivalent_diameter',
-                           'major_axis_length',
-                           'minor_axis_length',
-                           'perimeter',
-                           'feret_diameter_max',
-                           #'solidity'
-                          ]
-        for key,val in clusters.items():
-            #print(f'{key}: {len(val)}')
-            if key == 'area':
-                clusters[key] = clusters[key]*self.pixels_to_um**2
-            if key == 'orientation':
-                continue # Line didn't seem used to me previously...?
-            if key == 'label':
-                continue
-            elif key in scaled_features:
-                clusters[key] = clusters[key]*self.pixels_to_um
+            scaled_features = ['equivalent_diameter',
+                            'major_axis_length',
+                            'minor_axis_length',
+                            'perimeter',
+                            'feret_diameter_max',
+                            #'solidity'
+                            ]
+            for key,val in clusters.items():
+                #print(f'{key}: {len(val)}')
+                if key == 'area':
+                    clusters[key] = clusters[key]*self.pixels_to_um**2
+                if key == 'orientation':
+                    continue # Line didn't seem used to me previously...?
+                if key == 'label':
+                    continue
+                elif key in scaled_features:
+                    clusters[key] = clusters[key]*self.pixels_to_um
 
-        # Add in Composite variables
-        clusters['major_axis_length/minor_axis_length'] = clusters['major_axis_length']/clusters['minor_axis_length']
-        clusters['perimeter/major_axis_length'] = clusters['perimeter']/clusters['major_axis_length']
-        clusters['perimeter/minor_axis_length'] = clusters['perimeter']/clusters['minor_axis_length']
+            # Add in Composite variables
+            clusters['major_axis_length/minor_axis_length'] = clusters['major_axis_length']/clusters['minor_axis_length']
+            clusters['perimeter/major_axis_length'] = clusters['perimeter']/clusters['major_axis_length']
+            clusters['perimeter/minor_axis_length'] = clusters['perimeter']/clusters['minor_axis_length']
 
-        # Add in Label, Filename, Region Columns
-        self.number_labels = len(clusters['area'])
-        labeling_list = [None] * self.number_labels
-        filename_list = [self.input_path] * self.number_labels
-        clusters['Labels'] = labeling_list
-        clusters['Filename'] = filename_list
-        clusters['Region'] = clusters['label']
+            # Add in Label, Filename, Region Columns
+            self.number_labels = len(clusters['area'])
+            labeling_list = [None] * self.number_labels
+            filename_list = [self.input_path] * self.number_labels
+            clusters['Labels'] = labeling_list
+            clusters['Filename'] = filename_list
+            clusters['Region'] = clusters['label']
 
-        # Create CSV (override_exists is a safety variable to avoid rewriting data)
-        return pd.DataFrame(clusters)
+            # Create CSV (override_exists is a safety variable to avoid rewriting data)
+            self._df = pd.DataFrame(clusters)
+
+        return self._df
 
     def create_csv(self):
         if self.override_exists:
@@ -437,32 +445,27 @@ class ImageSegmenter():
         mod_image[label_marker != label_oi] = mod_image[label_marker != label_oi]*alpha
         return mod_image[y1:y2,x1:x2]
 
-    @cached_property
+    @property
     def region_arr(self):
         '''
         img Regions associated with the image segmentation 
         NOTE: _Slightly_ different from 'begin_labeling' as we remove non-region ENTIRELY
         '''
-        return self.grab_region_array(focused=True)
+        if self._region_arr is None:
+            self._region_arr = self.grab_region_array(focused=True)
+        return self._region_arr
 
-        self.df # Make sure this is initiated
-        data_arr = []
-        ii = 0
-        regions_list = list(self.df["Region"])
-        
-        while ii < len(regions_list): # 1-Offset for counting purposes
-            region_oi = regions_list[ii]+self._label_increment
-
-            data_arr.append(self._grab_region(self.image_cropped,region_oi,alpha=0,buffer=5))
-            ii += 1
-        return data_arr
-    @cached_property
+    @property
     def region_dict(self):
-        return self.grab_region_dict(focused=True,alpha=.7)
+        if self._region_dict is None:
+
+            self._region_dict = self.grab_region_dict(focused=True,alpha=.7)
+        
+        return self._region_dict
     
     def grab_region_array(self,img_oi=None,focused=True,alpha=0,buffer=5):
         '''
-        Grab an array of images that are bounded (focused) or the same size as image_cropped (nopt focused)
+        Grab an array of images that are bounded (focused) or the same size as image_cropped (not focused)
         Can be useful for quickly making bools of regions
         '''
         if img_oi is None:
@@ -481,25 +484,43 @@ class ImageSegmenter():
             ii += 1
         return data_arr
     
-    def grab_region_dict(self,focused=True,alpha=.7):
+    def grab_region_dict(self,img_oi=None,focused=True,alpha=.7):
+
+        if img_oi is None:
+            img_oi = self.image_cropped
         self.df # Make sure this is initiated
         regions_list = list(self.df["Region"])
         data_dict = {}
         for region in regions_list: # 1-Offset for counting purposes
             region_oi = region+self._label_increment
             if focused:
-                data_dict[region] = self._grab_region(self.image_working,region_oi,alpha=alpha,buffer=15)
+                data_dict[region] = self._grab_region(img_oi,region_oi,alpha=alpha,buffer=15)
             if not focused:
-                data_dict[region] = self._grab_region(self.image_working,region_oi,alpha=alpha,buffer=np.inf)
+                data_dict[region] = self._grab_region(img_oi,region_oi,alpha=alpha,buffer=np.inf)
         return data_dict
 
-    def begin_labeling(self):
+    def begin_labeling(self,
+                       labeling_dict={"C":"Crystal","M":"Multiple Crystal","P":"Poorly Segmented","I":"Incomplete"}):
+        '''
+        Major Utility function for labeling of segmented regions
+        '''
+        # Make sure B and D are not overwritten
+        if "B" in labeling_dict or "D" in labeling_dict:
+            raise Exception("Cannot use 'B' or 'D' in labeling_dict")
+        
+        # Develop options
+        options_list = labeling_dict.keys()
+        options_str = ", ".join([f'{key} = {val}' for key,val in labeling_dict.items()])
+
+        
         self.df # To ensure it's been initialized
         ii = 0
+
+        # NOTE: Use this instead of self.region_arr or self.region_dict to avoid overwrite issues
         regions_list = self.df["Region"]
-        while ii < len(regions_list): # 1-Offset for counting purposes
+        while ii < len(regions_list):
             clear_output(wait=False)
-            region_oi = regions_list[ii] # +3 gets past Borders and BG labeling
+            region_oi = regions_list[ii] 
 
             testImage = self._grab_region(self.image_working,region_oi+self._label_increment,alpha=.75,buffer=20)
             plt.figure(figsize = (10,10))
@@ -507,11 +528,12 @@ class ImageSegmenter():
             plt.show()
             
             # User Input
-            input_list = ['C','M','P','I','B','D']
+            input_list = [*options_list,'B','D']
             
             print(f'Region {region_oi} (Max: {max(regions_list)}) \nNOTE: Skipping a region may mean a bad region was encountered\n')
             print("Type an integer to jump to region, or a character below to label image\n", 
-                "C = Crystal, M = Multiple Crystal, P = Poorly Segmented, I = Incomplete, B = Back, D = Done")
+                options_str,
+                "\nB = Back, D = Done")
             user_input = input()
             while (user_input not in input_list) and (not user_input.isnumeric()):
                 user_input = input("Invalid Input, Retry: ")
@@ -520,20 +542,13 @@ class ImageSegmenter():
                 continue
             elif user_input.isnumeric():
                 ii = int(user_input) - 1 # Because 1-Offset
-                continue;
+                continue
             elif user_input == 'D':
-                break;
+                break
                 
             # Clean-up
-            translated_input = None
-            if user_input == 'C':
-                translated_input = 'Crystal'
-            elif user_input == 'M':
-                translated_input = 'Multiple Crystal'
-            elif user_input == 'P':
-                translated_input = 'Poorly Segmented'
-            elif user_input == 'I':
-                translated_input = 'Incomplete'
+            translated_input = labeling_dict[user_input]
+
             self.df.loc[self.df['Region'] == region_oi,'Labels'] = translated_input
             self.df.to_csv(self._csv_file)
             
