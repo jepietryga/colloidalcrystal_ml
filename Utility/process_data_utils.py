@@ -10,6 +10,7 @@ import glob
 import re
 from functools import partial
 from sklearn.metrics import r2_score
+from pathlib import Path
 
 def schultz_zimm(x,a,b):
     '''
@@ -49,6 +50,7 @@ def load_dataframe(file,directory_path:str="../Results"):
     return pd.read_csv(path_oi)
 
 def plot_feature_with_experiments_schultz_zimm(
+        df,
         feature:str='area',
         experiment_list:list[str]=[],
         color_list:list[str]=["b","g","m","r","y"],
@@ -59,8 +61,10 @@ def plot_feature_with_experiments_schultz_zimm(
 
     '''
     # Load the dataframe dict for easy access
-    df_dict = {exp:load_dataframe(exp) for exp in experiment_list}
-    print(df_dict)    
+    df_dict = {}
+    for experiment in experiment_list:
+        df_sub = df[df.search_str == experiment]
+        df_dict[experiment] = df_sub
     # Clipping Variable
     max_out = 2.50*10**6 if feature == 'area' else 2000
 
@@ -142,6 +146,7 @@ def row_fit_schultz_zimm(row:pd.Series,label=None,feature=None):
     return row
 
 def plot_feature_with_experiments_gaussian(
+        df,
         feature:str='area',
         experiment_list:list[str]=[],
         color_list:list[str]=["b","g","m","r","y"],
@@ -151,9 +156,11 @@ def plot_feature_with_experiments_gaussian(
     Given a feature found in ML Result csvs, plot it for each experiment listed
 
     '''
-    # Load the dataframe dict for easy access
-    df_dict = {exp:load_dataframe(exp) for exp in experiment_list}
-    print(df_dict)    
+    df_dict = {}
+    for experiment in experiment_list:
+        df_sub = df[df.search_str == experiment]
+        df_dict[experiment] = df_sub
+
     # Clipping Variable
     max_out = 2.50*10**6 if feature == 'area' else 2000
 
@@ -242,98 +249,32 @@ def row_fit_gaussian(row:pd.Series,label=None,feature=None):
     row["r2"] = r2
     return row
 
-def create_formatted_df():
+def create_formatted_df(csv_list,
+                        overwrite_string:str=None):
     '''
-    Using new formatting style, load in each dataframe and create a column s.t. it matches this styling
-    Easiest Load-in technique: look for 'L-'
-    Can use this to more easily query the data
+    Given a list of csv files, create dataframes w/ file information
+    If overwrite string is used, use it for EVERY csv in the overwrite string list
     '''
-    path_total = glob.glob("../Results/*.csv") 
-    path_list = [p for p in path_total if "L-" in p and "Images" not in p]
-    print(path_list)
+    regex = "(?<=[_|\s])?([^_]+)-([^_]+)(?=[_|\s])?"
+    
     df_arr = []
+    for csv_path in csv_list:
+        if overwrite_string is None:
+            search_str = Path(csv_path).stem
+        else:
+            search_str = overwrite_string
 
-    for path in path_list:
-        rel_path = path
-        file = path.split("/")[-1]
+        found = re.findall(regex,search_str)
+        identifier_kwargs = {key:val for key,val in found}
+        identifier_kwargs = identifier_kwargs | {"search_str":search_str,
+                                                "path":csv_path
+                                                }
+        # Update these values into every column of the dataframe
+        df_temp = pd.read_csv(csv_path)
+        for identifier,val in identifier_kwargs.items():
+            df_temp[identifier] = [val]*len(df_temp)
 
-        # Linker regex
-        linker = int(re.search('L-(.+?)[_|\.]',path).group(1))
-
-        # Concentration regex
-        concentration = float(re.search('nM-(.+?)[\.|_]',path).group(1))
-
-        # Mixing regex
-        mixing = True if re.search('mixing-(.+?)[\.|_]',path).group(1) == 'T' else False
-
-        # Oven regex
-        oven = True if re.search('oven-(.+?)[\.|_]',path).group(1) == 'T' else False
-
-        # Edge regex
-        edge = str(re.search('edge-(.+?)[_|\.]',path).group(1))
-
-        # thresh
-        thresh = str(re.search('thresh-(.+?)[_|\.]',path).group(1))
-
-        df_temp = pd.DataFrame({
-            'rel_path':rel_path,
-            'file':file,
-            'linker':linker,
-            'concentration':concentration,
-            'mixing':mixing,
-            'oven':oven,
-            'edge':edge,
-            'thresh':thresh
-        },
-        index=[0]
-        )
         df_arr.append(df_temp)
-    df_final = pd.concat(df_arr)
-    df_final.reset_index(inplace=True)
+    
+    df_final=pd.concat(df_arr)
     return df_final
-        
-
-# NOTE TO SELF: Might make sense to have this master just get the fitting parameters and counts as a separate technique?
-if __name__ == "__main__":
-    df_master = create_formatted_df()
-    
-    # Investigate Concentration for Linker 1, no mixing
-    sub_df = df_master[
-        (df_master.linker == 4) &
-    #    (df_master.concentration == 2.5) &
-        (~df_master.mixing) &
-        (~df_master.oven) &
-        (df_master.edge == "None") &
-        (df_master.thresh == "otsu")
-        ]
-    exp_list = np.unique(sub_df.file)
-    fig = plot_feature_with_experiments_gaussian('area',exp_list)
-    #fig = plot_feature_with_experiments_schultz_zimm('area',exp_list)
-    plt.savefig("Test.png")
-
-    # Try and make RC's 2-D plot
-    df_master = df_master.apply(row_fit_gaussian,axis=1)
-    sub_df = sub_df.apply(row_fit_gaussian,axis=1)
-    
-    print(df_master.keys())
-    
-    df_master = df_master.sort_values(by=["concentration","linker"])
-    
-    print(sub_df[['linker','concentration',"A","mu","sig","r2"]])
-    fig,ax = plt.subplots()
-    im = ax.scatter(
-            [str(l) for l in df_master.linker],
-            [str(c) for c in df_master.concentration],
-            marker="s",
-            s=48*2**6,
-                c=df_master.mu,
-                cmap="plasma")
-    ax.set_xlabel("Linker")
-    ax.set_ylabel("Concentration")
-    ax.set_aspect('equal')
-    ax.margins(0.25)
-    fig.colorbar(im,ax=ax)
-    
-    fig.savefig("2-D_Plot.png")
-
-    

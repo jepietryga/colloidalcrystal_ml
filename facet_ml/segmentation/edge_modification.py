@@ -371,77 +371,51 @@ def edge_localthresh(self):
     return live_edges
 
 def edge_testing(self):
+    # Get Masking info
+    image_cropped_blur = cv2.GaussianBlur(self.image_cropped,(9,9),cv2.BORDER_DEFAULT)
+    thresh = threshold_local(image_cropped_blur,35,offset=10)
+    mask = self.image_cropped > thresh
+    mask = quick_close(mask,3,neighbor_threshold=7)
+    mask = cv2.dilate(mask.astype(np.uint8),np.ones([3,3]))
+    mask = cv2.erode(mask.astype(np.uint8),np.ones([3,3]),iterations=2)
+
+    img_logical = ~mask.astype(bool)
+    #img_logical = mask == 0
+    #cv2.imwrite(f"localthresh{self._file_name}.png",img_logical.astype(np.uint8)*255)
+    
     # Get Canny Edge
     canny_args = [(5,5),10,50,80,80,False]
     canny_edge = self.canny_edge(*canny_args)
-
-    kern_size = 7
-    blurred_image_cropped = cv2.GaussianBlur(self.image_cropped,(3,3),cv2.BORDER_DEFAULT)
-    img_edges = normalized_neighbor_sum(self.image_cropped, kern_size)
-
-    img_edges[canny_edge == 0] = 0
-
-    # Make histograms for deadness/liveness heuristic
-    histogram, bin_edges = np.histogram(img_edges,bins=256) #256
-    # remove 0 vals, 255 vals
-    bin_edges = bin_edges[1:-1]
-    histogram = histogram[1:-1]
-    mode = bin_edges[np.argmax(histogram)]
-    median = np.median(img_edges[img_edges != 0])
-    mean = np.mean(img_edges[img_edges != 0])
-    self._edge_stats = f"(MED.,MODE,MEAN),({median},{mode},{mean})"
-    print(self._edge_stats)
-    cut_off = np.min([median,mean,mode])*.8 #bin_edges[np.argmax(histogram)]
+    img_edges = canny_edge
+    self._edge_stats = None
 
     # Define dead edges
     dead_edges = copy.deepcopy(img_edges)
-    dead_edges[dead_edges < cut_off] = 0
+    dead_edges[img_logical] = 0
     dead_edges[dead_edges > 0] = 255
 
     # define live edges
     live_edges = copy.deepcopy(img_edges)
-    live_edges[live_edges > cut_off] = 0
+    live_edges[~img_logical] = 0
     live_edges[live_edges > 0] = 255
 
     # broaden edges for visibility, store for figure reference
-    dead_broad = cv2.GaussianBlur(dead_edges,(1,1),cv2.BORDER_DEFAULT)
-    live_broad  = cv2.GaussianBlur(live_edges,(5,5),cv2.BORDER_DEFAULT)
+    dead_broad = cv2.GaussianBlur(dead_edges,(3,3),cv2.BORDER_DEFAULT)
+    live_broad  = cv2.GaussianBlur(live_edges,(3,3),cv2.BORDER_DEFAULT)
     color_img = cv2.cvtColor(self.image_cropped,cv2.COLOR_GRAY2RGB)
     color_img[dead_broad > 0] = (0,0,255)
     color_img[live_broad > 0] = (0,255,0)
     #color_img[(dead_broad > 0) & (live_broad>0)] = (255,0,0)
     self._edge_highlight = color_img
-    self._dead_edges = dead_edges
     self._live_edges = live_edges
     self._original_thresh = copy.deepcopy(self.thresh)
 
     # Modify threshold
-    cv2.imwrite("TEST.png",color_img)
-    print(type(self.thresh),np.unique(self.thresh))
     return live_edges
-    print(type(self.thresh),np.unique(self.thresh))
 
-def visualize_used_edges(img_edges,cut_off,image_cropped):
-    '''
-    Edges that are greater than the cutoff are unused ("dead")
-    Edges that are less than the cutoff are used ("live")
-    Return (dead_edges, live_edges, color_img)
-    '''
-    # Define "dead" edges
-    dead_edges = copy.deepcopy(img_edges)
-    dead_edges[dead_edges < cut_off] = 0
-    dead_edges[dead_edges > 0] = 255
 
-    # define "live" edges
-    live_edges = copy.deepcopy(img_edges)
-    live_edges[live_edges > cut_off] = 0
-    live_edges[live_edges > 0] = 255
+def sobel_connectivity(self):
+    image_cropped_blur = cv2.GaussianBlur(self.image_cropped,(9,9),cv2.BORDER_DEFAULT)
 
-    # broaden edges for visibility, store for figure reference
-    dead_broad = cv2.GaussianBlur(dead_edges,(3,3),cv2.BORDER_DEFAULT)
-    live_broad  = cv2.GaussianBlur(live_edges,(5,5),cv2.BORDER_DEFAULT)
-    color_img = cv2.cvtColor(image_cropped,cv2.COLOR_GRAY2RGB)
-    color_img[dead_broad > 0] = (0,0,255)
-    color_img[live_broad > 0] = (0,255,0)
-
-    return (dead_edges,live_edges,color_img)
+    cv2.Sobel()
+    

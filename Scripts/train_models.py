@@ -57,7 +57,7 @@ best_model_dict = {
         "f1_score":0,
     },
 }
-print(len(df))
+
 #i Crystalline vs. Not Crystalline Split
 for key,_ in tqdm.tqdm(best_model_dict.items()):
     df = df_load.copy()

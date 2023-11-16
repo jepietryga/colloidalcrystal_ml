@@ -34,3 +34,7 @@ STATIC_MODELS["crystalline_noncrystalline"] = os.path.join(STATIC_FOLDER,
 STATIC_MODELS["incomplete_poorlysegmented"] = os.path.join(STATIC_FOLDER,
                                                 "Models",
                                                 "RF_I_P.sav")
+
+STATIC_MODELS["segment_anything_vit_l"] = os.path.join(STATIC_FOLDER,
+                                                       "Models",
+                                                       "sam_vit_l_0b3195.pth")

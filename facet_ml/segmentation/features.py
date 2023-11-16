@@ -39,7 +39,7 @@ def facet_score(image_segmenter:ImageSegmenter):
         minor_axis_length = row.minor_axis_length/image_segmenter.pixels_to_um
         r_equivalent = np.sqrt((major_axis_length**2+minor_axis_length**2)/2) # Approximation
         return (edge_score/area)*r_equivalent
-    
+    print(len(df))
     df["facet_score"] = df.apply(row_facet_score,axis=1)
 
         
