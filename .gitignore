@@ -11,6 +11,17 @@ Images
 # Larger Models
 facet_ml/static/Models/bg_segmenter.pickle
 facet_ml/static/Models/detectron2/model_final.pth
+facet_ml/static/Models/sam_vit_l_0b3195.pth
 
 # Most png are not necessary
 *.png
+
+# Pycache is cursed
+*pycache*
+*pyc*
+*.pyc
+*/*pyc*
+*/*/*pyc*
+
+# Ignore large amounts of data that be generated elsewhere
+ProcessedData
