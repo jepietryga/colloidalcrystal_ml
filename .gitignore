@@ -25,3 +25,4 @@ facet_ml/static/Models/sam_vit_l_0b3195.pth
 
 # Ignore large amounts of data that be generated elsewhere
 ProcessedData
+*._DS_Store*

@@ -56,7 +56,7 @@ class ImageSegmenter():
             result_folder_path (string) : Path to the folder .csv should be saved.
             override_exists (bool) : If .csv already exists, DO NOT overwrite it if this variable is False. Allows classification across sessions
         '''
-        # Given variables
+        # Given variables (besides input path, handle that at very end)
         self._input_path = input_path
         self.pixels_to_um = pixels_to_um
         self.top_boundary = top_boundary
@@ -68,12 +68,15 @@ class ImageSegmenter():
         self.threshold_mode = threshold_mode
         self.edge_modification = edge_modification
         self.file_str = file_str
+
+
         
         # Image variables
         self.image_read = None
         self.image_cropped = None
         self.image_working = None
         self.image_labeled = None
+        self.thresh = None
 
         os.makedirs(self.result_folder_path,exist_ok=True)
             
@@ -102,12 +105,15 @@ class ImageSegmenter():
         self._region_dict = None
         self.thresh = None
 
+        # PyQt variables
+        self._region_tracker = None # Used for keeping tabs on where in region list we are, created in self.df
+
         # Segment Anything Model variables
         self._mask_generator = None
 
-        if self._input_path is not None:
-            self.process_images(edge_modification=self.edge_modification)
-
+        # Input path stuff
+        # Input Path
+        self.input_path = self._input_path
     @property
     def input_path(self):
         return self._input_path
@@ -449,6 +455,7 @@ class ImageSegmenter():
                 df = pd.read_csv(self._csv_file)
                 self.number_labels = len(df['area'])
                 self._df = pd.read_csv(self._csv_file)
+                self._region_tracker = self._df["Region"].min()
                 return self._df
 
             propList = ['area',
@@ -504,6 +511,7 @@ class ImageSegmenter():
 
             # Create CSV (override_exists is a safety variable to avoid rewriting data)
             self._df = pd.DataFrame(clusters)
+            self._region_tracker = self._df["Region"].min()
 
         return self._df
 
@@ -513,7 +521,8 @@ class ImageSegmenter():
         else:
             print("WARNING: Override not in place")
 
-    def _grab_region(self,img,label_oi,alpha=.75,buffer=20):
+    def _grab_region(self,img,region_oi,alpha=.75,buffer=20):
+        label_oi = region_oi + self._label_increment
         mod_image = copy.deepcopy(img)
         label_marker = copy.deepcopy(self.markers2)
         label_marker[self.markers2 != label_oi] = 0
@@ -557,7 +566,7 @@ class ImageSegmenter():
         regions_list = list(self.df["Region"])
         
         while ii < len(regions_list): # 1-Offset for counting purposes
-            region_oi = regions_list[ii]+self._label_increment
+            region_oi = regions_list[ii]
             if focused:
                 data_arr.append(self._grab_region(img_oi,region_oi,alpha=alpha,buffer=buffer))
             if not focused:
@@ -573,7 +582,7 @@ class ImageSegmenter():
         regions_list = list(self.df["Region"])
         data_dict = {}
         for region in regions_list: # 1-Offset for counting purposes
-            region_oi = region+self._label_increment
+            region_oi = region
             if focused:
                 data_dict[region] = self._grab_region(img_oi,region_oi,alpha=alpha,buffer=15)
             if not focused:
@@ -634,6 +643,12 @@ class ImageSegmenter():
             self.df.to_csv(self._csv_file)
             
             ii = ii + 1
+
+    ## PyQt Helper functions below
+    def update_df_label_at_region(self,label,region=None):
+        if region is None:
+            region = self._region_tracker
+        self.df.loc[self.df['Region'] == region,'Labels'] = label
 
     def labeling_mapping(self):
         '''

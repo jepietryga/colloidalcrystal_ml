@@ -25,6 +25,8 @@ IS = ImageSegmenter(input_path=None,
 ## Define Images ##
 
 parent_image_dir = os.path.join(Path(__file__).parent.parent,"Images","2023_11_Organized_Images")
+
+parent_image_dir = os.path.join(Path(__file__).parent.parent,"Images","Fig_3_PAE_diffusion")
 image_folders = [path for path in glob.glob(os.path.join(parent_image_dir,"*")) if os.path.isdir(path)]
 
 ## Define Save Path
