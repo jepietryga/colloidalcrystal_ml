@@ -103,7 +103,7 @@ def plot_feature_with_experiments_schultz_zimm(
             pdi = molecular_weight/molecular_number
 
             ax_oi.plot(x_bins,schultz_zimm(histogram_bins,*popt)*scale_factor,color=c_oi,
-                label=f"{name} ({counts}/{total_counts} a: {a}, b: {b}, PDI: {pdi}")
+                label=f"{name} ({counts}/{total_counts} a: {a:.3f}, b: {b:.3f}, PDI: {pdi:.3f}")
             ax_oi.hist(x=df_oi[feature],bins=histogram_bins,color=c_oi,alpha=.5)
             ax_oi.legend()
             ax_oi.set_title(label)
@@ -190,7 +190,7 @@ def plot_feature_with_experiments_gaussian(
             #freq = get_frequency(df_oi,histogram_bins,feature)
             freq,bin_edges = np.histogram(df_oi[feature],bins=100,range=(histogram_min,max_out))
             x_bins = bin_edges + (bin_edges[2]-bin_edges[1])/2
-            p0 = [max(freq),max(x_bins)/10,(histogram_bins[2]-histogram_bins[1])*2]
+            p0 = [max(freq),max(x_bins)/10,(histogram_bins[2]-histogram_bins[1])*20]
             bounds = [(0,0,0,),
               (max(freq)*2,np.inf,np.inf)]
             popt,pcov = curve_fit(gaussian,x_bins[:-1],freq,
@@ -201,7 +201,7 @@ def plot_feature_with_experiments_gaussian(
             sig = popt[2]
 
             ax_oi.plot(x_bins,gaussian(x_bins,*popt),color=c_oi,
-                label=f"{name} ({counts}/{total_counts} mu: {mu}, sig: {sig}")
+                label=f"{name} ({counts}/{total_counts} mu: {mu:.3f}, sig: {sig:.3f}")
             ax_oi.hist(x=df_oi[feature],bins=histogram_bins,color=c_oi,alpha=.5)
             ax_oi.legend()
             ax_oi.set_title(label)

@@ -67,29 +67,31 @@ class Ui(QtWidgets.QDialog):
         self.file_path = None
 
         # Load all necessary connections
+        # self.wire_functionality()
         self.wire_core_buttons()
         self.wire_classify_buttons()
         self.show()
 
         
-
-    # Wiring Buttons
-
     def wire_core_buttons(self):
         self.selectInputPushButton.clicked.connect(self.get_input_file)
         self.runSegmentationPushButton.clicked.connect(self.perform_segmentation)
+        self.saveSegmentationButton.clicked.connect(self.save_segmentation)
 
     def wire_classify_buttons(self):
 
         self.forwardClassifyButton.clicked.connect(self.forward_classify_click)
         self.backClassifyButton.clicked.connect(self.back_classify_click)
         self.labelingGuideLineEdit.editingFinished.connect(self.update_df_region_label)
-        self.saveClassifyButton.clicked.connect(self.save)
+        self.saveClassifyButton.clicked.connect(self.save_classify)
 
     ## Wired Functions
 
     def get_input_file(self):
+        
         fileName,_ = QtWidgets.QFileDialog.getOpenFileName(self,'Single File',"./",filter="Images (*.bmp *.png *.tif)")
+        
+        
         if fileName:
             self.file_path = fileName
             
@@ -119,11 +121,17 @@ class Ui(QtWidgets.QDialog):
         # Update state of PyQt
         self.refresh_classify_tab()
 
-    def save(self):
+    def save_classify(self):
         if self.image_segmenter:
             file_name,_ = QtWidgets.QFileDialog.getSaveFileName(self,"Save File","","CSV Files (*.csv)")
             if file_name:
                 self.image_segmenter.df.to_csv(file_name)
+    
+    def save_segmentation(self):
+        if self.image_segmenter:
+            file_name,_ = QtWidgets.QFileDialog.getSaveFileName(self,"Save File","","H5 Files (*.h5)")
+            if file_name:
+                self.image_segmenter.to_h5(file_name)
 
     def back_classify_click(self):
         if self.image_segmenter:

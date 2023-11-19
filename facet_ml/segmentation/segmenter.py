@@ -22,6 +22,7 @@ from sklearn.ensemble import RandomForestClassifier
 import pickle
 from pathlib import Path
 from typing import Union
+import h5py
 
 from facet_ml.segmentation import edge_modification as em
 from facet_ml.segmentation import thresholding
@@ -258,7 +259,7 @@ class ImageSegmenter():
         #print(np.shape(self.image_cropped),np.shape(self.image_working))
         image_working_blur = cv2.GaussianBlur(self.image_working,(9,9),0) # NOTE: What's the impact of this
         self.markers2 = cv2.watershed(image_working_blur,temp_markers)
-
+        
     def _clean_markers2(self):
         '''
         TESTING
@@ -520,6 +521,29 @@ class ImageSegmenter():
             self.df.to_csv(self._csv_file)
         else:
             print("WARNING: Override not in place")
+
+    def to_h5(self,file_name):
+        '''
+        Save all images and regions to an h5 file for easy access
+        '''
+        if file_name.split(".")[-1] != "h5":
+            Exception(f"Error: {file_name} is not an h5 file. Change the extension")
+        f = h5py.File(file_name,"w")
+
+        f.create_dataset("input_path",data=self.input_path)
+        f.create_dataset("input_image",data=self.image_read)
+        f.create_dataset("image_cropped",data=self.image_cropped)
+        f.create_dataset("image_working",data=self.image_working)
+        f.create_dataset("image_labeled",data=self.image_labeled)
+        f.create_dataset("thresh",data=self.thresh)
+        f.create_dataset("markers2",data=self.markers2)
+       
+        # Load in all regions identified
+        dset = f.create_dataset("Regions",shape=(len(self.df),*np.shape(self.markers2)))
+        for ii,(_,region) in enumerate(self.grab_region_dict(self.image_cropped,focused=False,alpha=0).items()):
+            dset[ii,:,:] = region
+
+        f.close()
 
     def _grab_region(self,img,region_oi,alpha=.75,buffer=20):
         label_oi = region_oi + self._label_increment
