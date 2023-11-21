@@ -15,6 +15,7 @@ facet_ml/static/Models/sam_vit_l_0b3195.pth
 
 # Most png are not necessary
 *.png
+*.h5
 
 # Pycache is cursed
 *pycache*
