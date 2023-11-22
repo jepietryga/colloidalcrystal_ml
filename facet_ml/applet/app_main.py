@@ -62,6 +62,8 @@ class Ui(QtWidgets.QDialog):
         uic.loadUi('segmenter_classify_train_v2.ui',self)
 
         # Check cv images
+        self.batch_image_segmenter = None
+        self.batch_tracker = None
         self.image_segmenter = None
         self.cv_img = None
         self.file_path = None

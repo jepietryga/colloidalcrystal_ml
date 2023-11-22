@@ -284,8 +284,6 @@ class ImageSegmenter():
             marker2_working[marker_edge.astype(bool)] = -1
         return marker2_working
 
-
-
     def _generate_threshold(self,blur=None,threshold_mode=None):
         '''
         Method of creating threshold, uses different modes
@@ -717,8 +715,155 @@ class ImageSegmenter():
         return self.edge
 
     
+class BatchImageSegmenter():
+    
+    def __init__(self,
+                img_list=None,
+                IS_list=None,
+                pixels_to_um=9.37,
+                top_boundary=0,
+                bottom_boundary=860,
+                left_boundary=0,
+                right_boundary=2560,
+                result_folder_path="../../Results",
+                override_exists=False,
+                threshold_mode:Union[callable,str] = "otsu",
+                edge_modification:Union[callable,str] = None,
+                file_str = None):
+        '''
+        Class for doing batch processing of an image segmenter. 
+        Compared to a regular ImageSegmenter, all functional and proeprty calls here simply grab
+         and concatenate the individual ImageSegmenters together.
+
+         Use this in cases where holding all images simultaneously is desirable, 
+         but be warned it can take in a large amount of memory!
+        '''
+        # Input values
+        self._img_list = img_list
+        self._IS_list = IS_list # Try to keep these updated in parallel w/ eachother
+
+        self.pixels_to_um = pixels_to_um
+        self.top_boundary = top_boundary
+        self.bottom_boundary = bottom_boundary
+        self.left_boundary = left_boundary
+        self.right_boundary = right_boundary
+        self.result_folder_path = result_folder_path
+        self.override_exists = override_exists
+        self.threshold_mode = threshold_mode
+        self.edge_modification = edge_modification
+        self.file_str = file_str
+
+        # pyqt helpers, will access the ImageSegmenters together
+        self._df = None
+        self._region_arr = None
+        self._region_dict = None
+        self._region_tracker = None
+
+        self._batch_region_dict = None
+        self._IS_index = None # Easiest way to check which ImageSegmenter we're in
+
+        # Template ImageSegmenter (for if images are appended AFTER)
+        self._template_IS = ImageSegmenter(
+            pixels_to_um=self.pixels_to_um,
+            top_boundary=self.top_boundary,
+            bottom_boundary=self.bottom_boundary,
+            left_boundary=self.left_boundary,
+            right_boundary=self.right_boundary,
+            result_folder_path=self.result_folder_path,
+            override_exists=self.override_exists,
+            threshold_mode=self.threshold_mode,
+            edge_modification=self.edge_modification,
+            file_str=self.file_str)
+        
+        
+        
+    @property
+    def img_list(self):
+        return self._img_list
+    
+    @property
+    def IS_list(self):
+        return self._IS_list
+
+    def __getitem__(self,index):
+        return self.IS_list[index]
+    
+    def __setitem__(self,index,newValue):
+        if isinstance(newValue,ImageSegmenter):
+            self._IS_list[index]=newValue
+            self._img_list[index]=newValue.input_path
+        else:
+            self._img_list[index]=newValue
+            ready_IS = copy.deepcopy(self._template_IS)
+            ready_IS.input_path=newValue
+            self._IS_list[index]=ready_IS
+
+    def append(self,val):
+        if isinstance(val,ImageSegmenter):
+            self._IS_list.append(val)
+            self._img_list.append(val.input_path)
+        else:
+            self._img_list.append(val)
+            ready_IS = copy.deepcopy(self._template_IS)
+            ready_IS.input_path=val
+            self._IS_list.append(ready_IS)
+    @property
+    def df(self):
+        '''
+        Access the dataframe of EVERY ImageSegmenter here by concatting them
+        '''
+        if self._df is None:
+            self._df = pd.concat([IS.df for IS in self._IS_list])
+        return self._df
+
+    @property
+    def region_arr(self):
+        if self._region_arr is None:
+            self._region_arr = []
+            for IS in self._IS_list:
+                self._region_arr.extend(IS.region_arr)
+        
+        return self._region_arr
+    
+    @property
+    def region_dict(self):
+        if self._region_dict is None:
+            self._batch_region_dict = BatchedRegionDict([IS.region_dict for IS in self._IS_list])
+            self._region_dict = self._batch_region_dict
+        
+        return self._region_dict
+    
 
 
+# Need to define a batched region class to work
+class BatchedRegionDict():
+    def __init__(self,list_of_dicts):
+        '''
+        Dict-like class that only supports getting items
+        Should make it easier to grab regions
+        '''
+        self.grouped_dict = {ii:dict_oi for ii,dict_oi in enumerate(list_of_dicts)}
+
+    def __getitem__(self,val):
+        val_tracker = val
+        for key,item in self.grouped_dict.items():
+            check_inside = val_tracker - len(item)
+            
+            if check_inside < 0:
+                # Must be inside this current item
+                return item[val_tracker]
+            else:
+                val_tracker = check_inside
+    
+        raise Exception("Exception: Out of range")
+
+    def __setitem__(self,val):
+        raise Exception("Setting values not supported")
+    
+    def __len__(self):
+        return np.sum([len(ii) for _,ii in self.grouped_dict.items()])
+        
+    
 def grab_bound(img,mode="top",buffer=0):
     '''
     For an intensity img with region of interest and all others blacked out, get a bound defined by mode
