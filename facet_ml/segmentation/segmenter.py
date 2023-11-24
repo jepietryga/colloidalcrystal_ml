@@ -520,24 +520,28 @@ class ImageSegmenter():
         else:
             print("WARNING: Override not in place")
 
-    def to_h5(self,file_name):
+    def to_h5(self,file_name,mode="w"):
         '''
         Save all images and regions to an h5 file for easy access
         '''
         if file_name.split(".")[-1] != "h5":
             Exception(f"Error: {file_name} is not an h5 file. Change the extension")
-        f = h5py.File(file_name,"w")
+        
+        f = h5py.File(file_name,mode)
 
-        f.create_dataset("input_path",data=self.input_path)
-        f.create_dataset("input_image",data=self.image_read)
-        f.create_dataset("image_cropped",data=self.image_cropped)
-        f.create_dataset("image_working",data=self.image_working)
-        f.create_dataset("image_labeled",data=self.image_labeled)
-        f.create_dataset("thresh",data=self.thresh)
-        f.create_dataset("markers2",data=self.markers2)
+        group_name = Path(self._input_path).stem
+        group = f.create_group(group_name)
+
+        group.create_dataset("input_path",data=self.input_path)
+        group.create_dataset("input_image",data=self.image_read)
+        group.create_dataset("image_cropped",data=self.image_cropped)
+        group.create_dataset("image_working",data=self.image_working)
+        group.create_dataset("image_labeled",data=self.image_labeled)
+        group.create_dataset("thresh",data=self.thresh)
+        group.create_dataset("markers2",data=self.markers2)
        
         # Load in all regions identified
-        dset = f.create_dataset("Regions",shape=(len(self.df),*np.shape(self.markers2)))
+        dset = group.create_dataset("Regions",shape=(len(self.df),*np.shape(self.markers2)))
         for ii,(_,region) in enumerate(self.grab_region_dict(self.image_cropped,focused=False,alpha=0).items()):
             dset[ii,:,:] = region
 
@@ -738,10 +742,6 @@ class BatchImageSegmenter():
          Use this in cases where holding all images simultaneously is desirable, 
          but be warned it can take in a large amount of memory!
         '''
-        # Input values
-        self._img_list = img_list
-        self._IS_list = IS_list # Try to keep these updated in parallel w/ eachother
-
         self.pixels_to_um = pixels_to_um
         self.top_boundary = top_boundary
         self.bottom_boundary = bottom_boundary
@@ -753,16 +753,7 @@ class BatchImageSegmenter():
         self.edge_modification = edge_modification
         self.file_str = file_str
 
-        # pyqt helpers, will access the ImageSegmenters together
-        self._df = None
-        self._region_arr = None
-        self._region_dict = None
-        self._region_tracker = None
-
-        self._batch_region_dict = None
-        self._IS_index = None # Easiest way to check which ImageSegmenter we're in
-
-        # Template ImageSegmenter (for if images are appended AFTER)
+        # Template
         self._template_IS = ImageSegmenter(
             pixels_to_um=self.pixels_to_um,
             top_boundary=self.top_boundary,
@@ -774,16 +765,55 @@ class BatchImageSegmenter():
             threshold_mode=self.threshold_mode,
             edge_modification=self.edge_modification,
             file_str=self.file_str)
+
+        # Input values
+        self._img_list = None
+        self._IS_list = None # Try to keep these updated in parallel w/ eachother
+
+        if img_list:
+            self.img_list = img_list
+        if IS_list:
+            self.IS_list = IS_list
+
+
+        # pyqt helpers, will access the ImageSegmenters together
+        self._df = None
+        self._region_arr = None
+        self._region_dict = None
+        self._region_tracker = None
+
+        self._batch_region_dict = None
+        self._IS_index = None # Easiest way to check which ImageSegmenter we're in
+
+        # Template ImageSegmenter (for if images are appended AFTER)
         
-        
-        
+         
     @property
     def img_list(self):
         return self._img_list
     
+    @img_list.setter
+    def img_list(self,val):
+        self._img_list = val
+        
+        self._IS_list = []
+        for img_oi in self._img_list:
+            ready_IS = copy.deepcopy(self._template_IS)
+            ready_IS.input_path=img_oi
+            self._IS_list.append(ready_IS)
+    
     @property
     def IS_list(self):
         return self._IS_list
+
+    @IS_list.setter
+    def IS_list(self,val):
+        self._IS_list = val
+
+        self._img_list = []
+        for IS in val:
+            self._img_list.append(IS._input_path)
+        
 
     def __getitem__(self,index):
         return self.IS_list[index]

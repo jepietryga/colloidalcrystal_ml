@@ -23,7 +23,7 @@
     </rect>
    </property>
    <property name="currentIndex">
-    <number>1</number>
+    <number>0</number>
    </property>
    <widget class="QWidget" name="segmentTab">
     <attribute name="title">
@@ -378,13 +378,45 @@
    <property name="geometry">
     <rect>
      <x>70</x>
-     <y>590</y>
+     <y>630</y>
      <width>240</width>
      <height>32</height>
     </rect>
    </property>
    <property name="text">
     <string>Select Image or Folder...</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="inputLeftPushButton">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>80</x>
+     <y>590</y>
+     <width>51</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>&lt;-</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="inputRightPushButton">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>250</x>
+     <y>590</y>
+     <width>51</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>-&gt;</string>
    </property>
   </widget>
  </widget>
