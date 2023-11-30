@@ -25,5 +25,5 @@ facet_ml/static/Models/sam_vit_l_0b3195.pth
 */*/*pyc*
 
 # Ignore large amounts of data that be generated elsewhere
-ProcessedData
+ProcessedData/2023_*
 *._DS_Store*
