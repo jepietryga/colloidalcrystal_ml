@@ -73,11 +73,11 @@ class ImageSegmenter():
 
         
         # Image variables
-        self.image_read = None
-        self.image_cropped = None
-        self.image_working = None
-        self.image_labeled = None
-        self.thresh = None
+        self._image_read = None
+        self._image_cropped = None
+        self._image_working = None
+        self._image_labeled = None
+        self._thresh = None
 
         os.makedirs(self.result_folder_path,exist_ok=True)
             
@@ -104,7 +104,6 @@ class ImageSegmenter():
         self._df = None
         self._region_arr = None
         self._region_dict = None
-        self.thresh = None
 
         # PyQt variables
         self._region_tracker = None # Used for keeping tabs on where in region list we are, created in self.df
@@ -115,6 +114,7 @@ class ImageSegmenter():
         # Input path stuff
         # Input Path
         self.input_path = self._input_path
+
     @property
     def input_path(self):
         return self._input_path
@@ -136,7 +136,37 @@ class ImageSegmenter():
            
             self._csv_file  = f'{self.result_folder_path}/values_{self._file_name}_{self.file_str}.csv'
 
-            self.process_images(edge_modification=self.edge_modification)
+            # self.process_images(edge_modification=self.edge_modification)
+
+    @property
+    def image_read(self):
+        if self._image_read is None:
+            self.process_images()
+        return self._image_read
+    
+    @property
+    def image_cropped(self):
+        if self._image_cropped is None:
+            self.process_images()
+        return self._image_cropped
+    
+    @property
+    def image_working(self):
+        if self._image_working is None:
+            self.process_images()
+        return self._image_working
+    
+    @property
+    def image_labeled(self):
+        if self._image_labeled is None:
+            self.process_images()
+        return self._image_read
+    
+    @property
+    def thresh(self):
+        if self._thresh is None:
+            self.process_images()
+        return self._thresh
 
     def process_images(self,
         blur=False,
@@ -146,15 +176,17 @@ class ImageSegmenter():
         Create each of the images of interest.
         Performs segmentation as part of the process
         '''
+        if self.input_path is None:
+            raise Exception("Error: ImageSegmenter has no input_path")
         # Raw Read-in
-        self.image_read  = cv2.imread(self.input_path, 0)
-        self.image_cropped = self.image_read[self.top_boundary:self.bottom_boundary,
+        self._image_read  = cv2.imread(self.input_path, 0)
+        self._image_cropped = self.image_read[self.top_boundary:self.bottom_boundary,
                                 self.left_boundary:self.right_boundary]
-        self.image_working = cv2.imread(self.input_path, 1)
-        self.image_working = self.image_working[self.top_boundary:self.bottom_boundary,
+        self._image_working = cv2.imread(self.input_path, 1)
+        self._image_working = self.image_working[self.top_boundary:self.bottom_boundary,
                                 self.left_boundary:self.right_boundary]
 
-        self.thresh = np.full_like(self.image_cropped,0)
+        self._thresh = np.full_like(self.image_cropped,0)
 
         # Perform segmentation
         self.set_markers(edge_modification=edge_modification)
@@ -163,7 +195,7 @@ class ImageSegmenter():
         self.regions_list = np.unique(self.markers)-self._label_increment
         self.regions_list = [x for x in self.regions_list if x > 0]
 
-        self.image_labeled = color.label2rgb(self.markers2, bg_label=0)
+        self._image_labeled = color.label2rgb(self.markers2, bg_label=0)
         #self.decorate_regions()
 
     def set_markers(self,
@@ -217,9 +249,9 @@ class ImageSegmenter():
         ## Threshold and Get background
         kernel = self.kernel
 
-        self.thresh = self._generate_threshold()
-        self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_OPEN, kernel,iterations = 2)
-        self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_CLOSE, kernel,iterations = 1)
+        self._thresh = self._generate_threshold()
+        self._thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_OPEN, kernel,iterations = 2)
+        self._thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_CLOSE, kernel,iterations = 1)
         
         # Sure Background
         self._bg_mark = cv2.dilate(self.thresh,kernel,iterations=1)

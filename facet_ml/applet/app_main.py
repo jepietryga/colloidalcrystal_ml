@@ -118,7 +118,7 @@ class Ui(QtWidgets.QDialog):
             #self.file_path = fileName
             
             self.perform_segmentation()
-            self.labeling_mode()
+            #self.labeling_mode()
 
     def input_right(self):
         self.batch_tracker += 1
@@ -141,6 +141,8 @@ class Ui(QtWidgets.QDialog):
                                             )
         if self.batch_tracker is None:
             self.batch_tracker=0
+        
+        self.batch_process()
         self.update_image_segmenter() # NOTE: Also updates tabs
         self.check_input_button_enable()
         '''
@@ -248,6 +250,22 @@ class Ui(QtWidgets.QDialog):
         self.inputRightPushButton.setEnabled(right_bool)
 
     ## Large Scale Functions
+
+    def batch_process(self):
+        self.pbar = QtWidgets.QProgressBar(self)
+        self.pbar.setGeometry(80, 205, 240, 30)
+        self.pbar.setRange(0,len(self.files_list))
+        self.pbar.show()
+        self.show()
+        print("PROGRESS WINDOW OPEN")
+        for ii,IS in enumerate(self.batch_image_segmenter._IS_list):
+            self.pbar.setValue(ii)
+            print(ii)
+            QtWidgets.QApplication.processEvents() 
+            IS.process_images()
+        print("PROGRESS WINDOW CLOSE")
+        self.pbar.hide()
+        self.pbar.close()
 
     def update_image_segmenter(self):
         self.image_segmenter=self.batch_image_segmenter[self.batch_tracker]
