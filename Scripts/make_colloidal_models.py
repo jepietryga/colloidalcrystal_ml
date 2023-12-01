@@ -40,8 +40,8 @@ df_total.to_csv("total.csv")
 # I_P
 # C_MC-I-P
 # C_MC_I_P
-key_list = [#"C-MC_I-P",
-            #"C_MC",
+key_list = ["C-MC_I",
+            "C_MC",
             #"I_P",
             #"C_MC-I-P",
             "C_MC_I"
@@ -51,7 +51,7 @@ for key in key_list:
     for label in list_labels:
         print(label,len(df_total[df_total.Labels == label]))
 
-    if key == "C-MC_I-P":
+    if key == "C-MC_I":
         df_run = model_utils.adjust_df_crystal_noncrystal_data(df_total)
         labels = ["Crystalline","Not Crystalline"]
     if key == "C_MC":
@@ -81,7 +81,7 @@ for key in key_list:
     my_trainer = ModelTrainer(df_run,
                  model_class=RandomForestClassifier,
                  model_params="original",
-                 features="default_features-facet_score-agnostic",
+                 features="default_features-agnostic",
                  labels=labels)
     
     my_trainer.best_model_loop(50)
@@ -93,4 +93,4 @@ for key in key_list:
     with open(save_path,"wb") as f:
         print(f"{key}:{my_trainer.best_run_dict['f1_score']:.3f}")
         print(my_trainer.best_run_dict["model"].predict(my_trainer.best_run_dict["X_test"]))
-        pickle.dump(my_trainer.best_run_dict["model"],f)
+        pickle.dump(my_trainer.best_run_dict,f)

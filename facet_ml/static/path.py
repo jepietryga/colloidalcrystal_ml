@@ -25,15 +25,23 @@ STATIC_MODELS["detectron2_config"] = os.path.join(STATIC_FOLDER,
 
 STATIC_MODELS["crystal_multicrystal"] = os.path.join(STATIC_FOLDER,
                                                 "Models",
+                                                "2023_11_models_length-agnostic",
                                                 "RF_C_MC.sav")
 
 STATIC_MODELS["crystalline_noncrystalline"] = os.path.join(STATIC_FOLDER,
                                                 "Models",
-                                                "RF_C-MC_I-P.sav")
+                                                "2023_11_models_length-agnostic",
+                                                "RF_C-MC_I.sav")
 
 STATIC_MODELS["incomplete_poorlysegmented"] = os.path.join(STATIC_FOLDER,
                                                 "Models",
+                                                "2023_11_original_default_features-agnostic",
                                                 "RF_I_P.sav")
+
+STATIC_MODELS["crystal_multicrystal_incomplete"] = os.path.join(STATIC_FOLDER,
+                                                "Models",
+                                                "2023_11_models_length-agnostic",
+                                                "RF_C_MC_I.sav")
 
 STATIC_MODELS["segment_anything_vit_l"] = os.path.join(STATIC_FOLDER,
                                                        "Models",

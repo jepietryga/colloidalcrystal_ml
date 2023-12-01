@@ -37,7 +37,6 @@
     ],
     "default_features-facet_score-agnostic":[
 
-        "max_intensity",
         "solidity",
         "major_axis_length/minor_axis_length",
         "perimeter/major_axis_length",
@@ -52,7 +51,6 @@
     ],
     "default_features-agnostic":[
 
-        "max_intensity",
         "solidity",
         "major_axis_length/minor_axis_length",
         "perimeter/major_axis_length",
