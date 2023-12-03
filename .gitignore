@@ -12,6 +12,7 @@ Images
 facet_ml/static/Models/bg_segmenter.pickle
 facet_ml/static/Models/detectron2/model_final.pth
 facet_ml/static/Models/sam_vit_l_0b3195.pth
+Models
 
 # Most png are not necessary
 *.png
@@ -27,3 +28,5 @@ facet_ml/static/Models/sam_vit_l_0b3195.pth
 # Ignore large amounts of data that be generated elsewhere
 ProcessedData/2023_*
 *._DS_Store*
+
+# 
