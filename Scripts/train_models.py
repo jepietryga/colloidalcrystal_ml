@@ -18,16 +18,18 @@ import Utility.model_utils as model_utils
 pd.options.mode.chained_assignment = None
 analyze_importance=False
 # Define Save Paths
-id =  "2023_classifier"
+id =  "2024_classifier"
+feature_params = "default_features"
 model_params = "original" # Inside config.json
 model_folder = "../Models"
 save_folder = os.path.join(model_folder,f"model_set__{model_params}_{id}")
 os.makedirs(save_folder,exist_ok=True)
 
 # Load Data
+data_path = "../ProcessedData/Training_Data_20240216/2024_02_16_Rachel-C_Training.csv" # "../Results/training_data.csv"
 config_path="../Utility/config.json"
-features = json.load(open(config_path,"r"))["default_features"]
-df_load = model_utils.load_data("../Results/training_data.csv")
+features = json.load(open(config_path,"r"))[feature_params]
+df_load = model_utils.load_data(data_path)
 
 param_dict = model_utils.load_params(model_params,config_path)
 

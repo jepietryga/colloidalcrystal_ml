@@ -18,7 +18,10 @@ from pathlib import Path
 
 CONFIG_PATH = os.path.join(Path(__file__).parent,"config_files")
 
-def load_feature_config(key:str):
+def load_feature_config(key:str) -> list:
+    '''
+    From the config_features.json file, return a tuple list of feature names
+    '''
     config_path = os.path.join(CONFIG_PATH,"config_features.json")
     with open(config_path,"r") as f:
         config_dict = json.load(f) 
@@ -52,7 +55,7 @@ class ModelTrainer():
             model_class (Callable) : A class that has "fit" and "predict" methods 
             model_params (str,dict) : If str, try and load from the config_model. 
                                     If dict, these are treated as kwargs for the model_class init
-            features (str,dict) : If str, try and load from tjhe config_features
+            features (str,dict) : If str, try and load from the config_features
                                     If list, use these features directly
         '''
         self.df = df
@@ -100,7 +103,8 @@ class ModelTrainer():
 
         self.X_train,self.X_test,self.y_train,self.y_test = train_test_split(self.X,self.y,
                                                                              test_size=test_size,
-                                                                             random_state=random_state)
+                                                                             random_state=random_state,
+                                                                             stratify=self.y)
 
         return self.X_train,self.X_test,self.y_train,self.y_test
 
@@ -169,3 +173,20 @@ class ModelTrainer():
 
         return self.logging_f1
             
+
+def replace_and_clean_labels_df(df:pd.DataFrame,replace_list:list,) -> pd.DataFrame:
+    '''
+    Given a dataframe, use the replace list (populated with ( [terms to replace], replace) ),
+    replace each value in the Labels column
+    Then, clear any other held value
+    '''
+    df_copy = df.copy()
+    label_list = []
+    for targets, replacer in replace_list:
+        label_list.append(replacer)
+        df_copy.replace(targets,replacer,inplace=True)
+
+    df_copy = df_copy[df_copy["Labels"].isin(label_list)]
+
+    df_copy.dropna(subset=['Labels'],inplace=True)
+    return df_copy

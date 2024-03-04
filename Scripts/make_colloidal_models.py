@@ -17,7 +17,7 @@ ModelTrainer = mt.ModelTrainer
 data_super_folder = os.path.join("..","ProcessedData","Training_Data_20231106")
 
 ## Define save folder
-save_folder = "2023_11_models_length-agnostic"
+save_folder = "2024_02_models_length-agnostic"
 save_directory = os.path.join("..","facet_ml","static","Models",save_folder)
 
 ### MAIN CODE ###
@@ -31,6 +31,17 @@ for path in csv_paths:
     df = pd.read_csv(path)
     df_list.append(df)
 df_total = pd.concat(df_list)
+
+# Load csv if not creating
+df_total = pd.read_csv("../ProcessedData/Training_Data_20240216/2024_02_16_Rachel-C_Training.csv")
+df_total.replace({
+    "C":"Crystal",
+    "MC":"Multiple Crystal",
+    "PS":"Poorly Segmented",
+    "I":"Incomplete"
+},inplace=True)
+
+df_total = df_total.loc[:, ~df_total.columns.str.contains('^Unnamed')] # Drop the unnamed columns
 df_total.replace([np.inf, -np.inf], np.nan, inplace=True)
 df_total.dropna(axis=0,inplace=True)
 df_total.to_csv("total.csv")

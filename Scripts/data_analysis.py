@@ -17,10 +17,11 @@ df_arr = []
 for experiment in experiment_folders:
     
     _,folder_name = os.path.split(experiment)#Path(experiment).stem
+    print(folder_name)
     csv_paths = glob.glob(os.path.join(experiment,"*.csv"))
-    df_folder = pdu.create_formatted_df(csv_paths,overwrite_string=folder_name)
-    df_arr.append(df_folder)
-
+    #df_folder = pdu.create_formatted_df(csv_paths,overwrite_string=folder_name)
+    #df_arr.append(df_folder)
+exit()
 df_total = pd.concat(df_arr)
 
 # Rearrange columns to be easier to read

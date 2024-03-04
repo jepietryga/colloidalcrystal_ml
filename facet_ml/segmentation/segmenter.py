@@ -27,6 +27,7 @@ import h5py
 from facet_ml.segmentation import edge_modification as em
 from facet_ml.segmentation import thresholding
 from facet_ml.static.path import STATIC_MODELS
+from facet_ml.segmentation import features as feat
 
 
 class ImageSegmenter():
@@ -42,7 +43,20 @@ class ImageSegmenter():
                 override_exists=False,
                 threshold_mode:Union[callable,str] = "otsu",
                 edge_modification:Union[callable,str] = None,
-                file_str = None
+                file_str = None,
+                sam_kwargs = {
+                    "points_per_side":64
+                },
+                region_featurizers = [
+                        feat.AverageCurvatureFeaturizer(),
+                        feat.StdCurvatureFeaturizer(),
+                        feat.MinCurvatureFeaturizer(),
+                        feat.MaxCurvatureFeaturizer(),
+                        feat.PercentConvexityCurvatureFeaturizer(),
+                        feat.LongestContiguousConcavityCurvatureFeaturizer(),
+                        feat.LongestContiguousConvexityCurvatureFeaturizer(),
+                        feat.DistinctPathsCurvatureFeaturizer()
+                ]
                 ):
         '''
         Main class for handling segmentation pipeline.
@@ -69,9 +83,9 @@ class ImageSegmenter():
         self.threshold_mode = threshold_mode
         self.edge_modification = edge_modification
         self.file_str = file_str
+        self.sam_kwargs = sam_kwargs
+        self.region_featurizers = region_featurizers
 
-
-        
         # Image variables
         self._image_read = None
         self._image_cropped = None
@@ -123,8 +137,13 @@ class ImageSegmenter():
     def input_path(self,value):
         self._input_path = value
         if self._input_path is not None:
-            # Clear the dataframe, if it exists
+            # Clear the dataframe and labeled_image, if it exists
             self._df = None
+            self._image_read = None
+            self._image_cropped = None
+            self._image_working = None
+            self._image_labeled = None
+            self._thresh = None
 
             # Redefine internal paths (these may be removed at some point)
             if isinstance(self._input_path,str):
@@ -160,7 +179,7 @@ class ImageSegmenter():
     def image_labeled(self):
         if self._image_labeled is None:
             self.process_images()
-        return self._image_read
+        return self._image_labeled
     
     @property
     def thresh(self):
@@ -231,7 +250,8 @@ class ImageSegmenter():
                 device = "cpu"
                 sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
                 sam.to(device=device)
-                mask_generator = SamAutomaticMaskGenerator(sam)
+                mask_generator = SamAutomaticMaskGenerator(sam,
+                                                           **self.sam_kwargs)
                 self._mask_generator = mask_generator
             masks = self._mask_generator.generate(self.image_working)
             
@@ -478,9 +498,12 @@ class ImageSegmenter():
         return
 
 
-    @property # NOTE: Cached Property is basically a memoized function
+    @property
     def df(self): # Might not actually want this to be cached if we're making this interactive...
         if self._df is None:
+            # Make sure to instantiate the images
+            self.image_labeled
+
             file_present = os.path.isfile(self._csv_file)
             if file_present and not self.override_exists:
                 df = pd.read_csv(self._csv_file)
@@ -540,9 +563,21 @@ class ImageSegmenter():
             clusters['Filename'] = filename_list
             clusters['Region'] = clusters['label']
 
-            # Create CSV (override_exists is a safety variable to avoid rewriting data)
+            # Create df
             self._df = pd.DataFrame(clusters)
             self._region_tracker = self._df["Region"].min()
+
+            # Need to add regional info
+            if len(self.region_featurizers) > 0:
+                region_dict = self.grab_region_dict(self.image_cropped,focused=False,alpha=0)
+                def row_add_features(row:pd.Series):
+                    region_img = region_dict[row.Region]
+                    region = feat.Region(region_img,featurizers=self.region_featurizers)
+                    return pd.Series(region.featurize())
+                
+                df_regions = self._df.apply(row_add_features, axis=1)
+                self._df = pd.concat([self._df,df_regions], axis=1)
+        
 
         return self._df
 
@@ -555,6 +590,7 @@ class ImageSegmenter():
     def to_h5(self,file_name,mode="w"):
         '''
         Save all images and regions to an h5 file for easy access
+        Since some Regions may be skipped during measurement, need to key on this
         '''
         if file_name.split(".")[-1] != "h5":
             Exception(f"Error: {file_name} is not an h5 file. Change the extension")
@@ -573,9 +609,13 @@ class ImageSegmenter():
         group.create_dataset("markers2",data=self.markers2)
        
         # Load in all regions identified
-        dset = group.create_dataset("Regions",shape=(len(self.df),*np.shape(self.markers2)))
-        for ii,(_,region) in enumerate(self.grab_region_dict(self.image_cropped,focused=False,alpha=0).items()):
-            dset[ii,:,:] = region
+        #dset = group.create_dataset("Regions",shape=(len(self.df),*np.shape(self.markers2)))
+        dset = group.create_dataset("Regions",shape=(self.df.Region.max(),*np.shape(self.markers2)))
+        for ii,(key,region) in enumerate(self.grab_region_dict(self.image_cropped,focused=False,alpha=0).items()):
+            # Some regions are grabbed in error
+            if len(region) == 0:
+                continue
+            dset[key-1,:,:] = region # Subtract by 1 since regions are 1-indexing
 
         f.close()
 
@@ -869,13 +909,15 @@ class BatchImageSegmenter():
             ready_IS = copy.deepcopy(self._template_IS)
             ready_IS.input_path=val
             self._IS_list.append(ready_IS)
+            
     @property
     def df(self):
         '''
         Access the dataframe of EVERY ImageSegmenter here by concatting them
         '''
-        if self._df is None:
-            self._df = pd.concat([IS.df for IS in self._IS_list])
+        self._df = pd.concat([IS.df for IS in self._IS_list])
+        #if self._df is None:
+        #    self._df = pd.concat([IS.df for IS in self._IS_list])
         return self._df
 
     @property

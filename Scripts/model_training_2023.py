@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import tqdm
 ModelTrainer = mt.ModelTrainer
 
-df_load = pd.read_csv("../Results/training_data.csv")
+df_load = pd.read_csv("ProcessedData/Training_Data_20240216/2024_02_16_Rachel-C_Training.csv")
 df_load = df_load.dropna(axis=0)
 myTrainer = ModelTrainer(df_load,
              model_class=RandomForestClassifier,

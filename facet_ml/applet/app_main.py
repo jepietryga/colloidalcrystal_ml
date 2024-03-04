@@ -64,7 +64,9 @@ class Ui(QtWidgets.QDialog):
 #class Ui(QtWidgets):
     def __init__(self):
         super(Ui,self).__init__()
-        uic.loadUi('segmenter_classify_train_v2.ui',self)
+        paath = "/Users/jacobpietryga/Desktop/Academics/colloidal_crystal_ML/facet_ml/applet/segmenter_classify_train_v2.ui"
+        #uic.loadUi( os.path.join(__file__,'segmenter_classify_train_v2.ui'),self)
+        uic.loadUi( paath,self)
 
         # Check cv images
         self.batch_image_segmenter = None
@@ -72,6 +74,13 @@ class Ui(QtWidgets.QDialog):
         self.image_segmenter = None
         self.cv_img = None
         self.file_path = None
+        
+        # Image Reading Variables
+        self.top_boundary = None
+        self.right_boundary = None
+        self.bottom_boundary = None
+        self.left_boundary = None
+        self.pixels_to_um = None
 
         # Load all necessary connections
         # self.wire_functionality()
@@ -91,6 +100,15 @@ class Ui(QtWidgets.QDialog):
     def wire_input_image_buttons(self):
         self.inputRightPushButton.clicked.connect(self.input_right)
         self.inputLeftPushButton.clicked.connect(self.input_left)
+
+        # Line Edits
+        self.topBoundInputLineEdit.editingFinished.connect(self.update_image_reading)
+        self.rightBoundInputLineEdit.editingFinished.connect(self.update_image_reading)
+        self.bottomBoundInputLineEdit.editingFinished.connect(self.update_image_reading)
+        self.leftBoundInputLineEdit.editingFinished.connect(self.update_image_reading)
+        self.scaleInputLineEdit.editingFinished.connect(self.update_image_reading)
+
+
 
     def wire_classify_buttons(self):
 
@@ -135,9 +153,15 @@ class Ui(QtWidgets.QDialog):
         edge_mode = self.edgeMethodMethodComboBox.currentText()
 
         # Re-runs everything and updates visible image_segmenter
+        self.update_image_reading()
         self.batch_image_segmenter = BatchImageSegmenter(self.files_list,
                                             threshold_mode=threshold_mode_mapper[threshold_mode],
-                                            edge_modification=edge_mode_mapper[edge_mode]
+                                            edge_modification=edge_mode_mapper[edge_mode],
+                                            top_boundary=self.top_boundary,
+                                            bottom_boundary=self.bottom_boundary,
+                                            right_boundary=self.right_boundary,
+                                            left_boundary=self.left_boundary,
+                                            pixels_to_um=self.pixels_to_um
                                             )
         if self.batch_tracker is None:
             self.batch_tracker=0
@@ -145,37 +169,20 @@ class Ui(QtWidgets.QDialog):
         self.batch_process()
         self.update_image_segmenter() # NOTE: Also updates tabs
         self.check_input_button_enable()
-        '''
-        self.image_segmenter = ImageSegmenter(self.file_path,
-                                              threshold_mode=threshold_mode_mapper[threshold_mode],
-                                              edge_modification=edge_mode_mapper[edge_mode])
-        
-
-        # Load images
-        input_pix = cv_to_QPixMap(self.image_segmenter.image_read)
-        thresh_pix = cv_to_QPixMap(self.image_segmenter.thresh)
-        markers_pix = cv_to_QPixMap(self.image_segmenter.markers2)
-
-        self.inputImagePixLabel.setPixmap(input_pix)
-        self.inputImagePixLabel.setScaledContents(True)
-        self.thresholdImagePixLabel.setPixmap(thresh_pix)
-        self.thresholdImagePixLabel.setScaledContents(True)
-        self.markersImagePixLabel.setPixmap(markers_pix)
-        self.markersImagePixLabel.setScaledContents(True)
-        
-        # Update state of PyQt
-        self.refresh_classify_tab()
-        '''
 
     def save_classify(self):
         if self.image_segmenter:
-            file_name,_ = QtWidgets.QFileDialog.getSaveFileName(self,"Save File","","CSV Files (*.csv)")
+            group_name = Path(self.image_segmenter._input_path).stem
+            
+            file_name,_ = QtWidgets.QFileDialog.getSaveFileName(self,"Save File",f"{group_name}.csv","CSV Files (*.csv)")
             if file_name:
-                self.batch_image_segmenter.df.to_csv(file_name)
+                self.image_segmenter.df.to_csv(file_name)
     
     def save_segmentation(self):
         if self.image_segmenter:
-            file_name,_ = QtWidgets.QFileDialog.getSaveFileName(self,"Save File","","H5 Files (*.h5)")
+            group_name = Path(self.image_segmenter._input_path).stem
+            
+            file_name,_ = QtWidgets.QFileDialog.getSaveFileName(self,"Save File",f"{group_name}.h5","H5 Files (*.h5)")
             if file_name:
                 f = h5py.File(file_name,"w")
                 f.close()
@@ -197,6 +204,13 @@ class Ui(QtWidgets.QDialog):
         self.image_segmenter.update_df_label_at_region(text)
         # Note: Might remove this
         self.forward_classify_click()
+
+    def update_image_reading(self):
+        self.top_boundary = int(self.topBoundInputLineEdit.text())
+        self.right_boundary = int(self.rightBoundInputLineEdit.text())
+        self.bottom_boundary = int(self.bottomBoundInputLineEdit.text())
+        self.left_boundary = int(self.leftBoundInputLineEdit.text())
+        self.pixels_to_um = float(self.scaleInputLineEdit.text())
 
     ## Utility functions
     def move_region(self,val):
@@ -249,6 +263,10 @@ class Ui(QtWidgets.QDialog):
         self.inputLeftPushButton.setEnabled(left_bool)
         self.inputRightPushButton.setEnabled(right_bool)
 
+    def enable_classify_buttons(self,val:bool):
+        self.forwardClassifyButton.setEnabled(val)
+        self.backClassifyButton.setEnabled(val)
+        
     ## Large Scale Functions
 
     def batch_process(self):
@@ -290,21 +308,36 @@ class Ui(QtWidgets.QDialog):
         Given current state of image segmenter, update the PyQt app to display image, info, and label
         '''
         #print(self.image_segmenter._region_tracker)
-        # Image
-        region_pix = cv_to_QPixMap(self.image_segmenter.region_dict[self.image_segmenter._region_tracker])
-        self.classifyRegionPixLabel.setPixmap(region_pix)
-        self.classifyRegionPixLabel.setScaledContents(True)
+        self.image_segmenter.df # Ensure this is instantiated
+        if ~np.isnan(self.image_segmenter._region_tracker):
+            self.enable_classify_buttons(True)
+            # Image
+            region_pix = cv_to_QPixMap(self.image_segmenter.region_dict[self.image_segmenter._region_tracker])
+            self.classifyRegionPixLabel.setPixmap(region_pix)
+            self.classifyRegionPixLabel.setScaledContents(True)
 
-        # Update Text
-        guiding_text = f"Looking at Region {self.image_segmenter._region_tracker} (Total Regions: {len(self.image_segmenter.df)})"
-        guiding_text += "\nWrite label for region in field below and hit Enter"
-        self.labelingGuideBodyLabel.setText(guiding_text)
+            # Update Text
+            guiding_text = f"Looking at Region {self.image_segmenter._region_tracker} (Total Regions: {len(self.image_segmenter.df)})"
+            guiding_text += "\nWrite label for region in field below and hit Enter"
+            self.labelingGuideBodyLabel.setText(guiding_text)
 
-        # Update Label
-        label_text = self.image_segmenter.df.loc[
-            self.image_segmenter.df["Region"] == self.image_segmenter._region_tracker,"Labels"
-        ].tolist()[0]
-        self.labelingGuideLineEdit.setText(label_text)
+            # Update Label
+            label_text = self.image_segmenter.df.loc[
+                self.image_segmenter.df["Region"] == self.image_segmenter._region_tracker,"Labels"
+            ].tolist()[0]
+            #print(label_text)
+            self.labelingGuideLineEdit.setText(str(label_text))
+        else:
+            self.enable_classify_buttons(False)
+            blank_pix = QtGui.QPixmap()
+            blank_pix.fill(QtGui.QColor(0,0,0,0))
+            self.classifyRegionPixLabel.setPixmap(blank_pix)
+            self.classifyRegionPixLabel.setScaledContents(True)
+
+            # Update Text
+            guiding_text = "No regions detected in this image"
+            self.labelingGuideBodyLabel.setText(guiding_text)
+            
 
     def initiate_labeling(self):
         '''

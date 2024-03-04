@@ -18,6 +18,9 @@ Models
 *.png
 *.h5
 
+# Most csv not necessary
+*.csv
+
 # Pycache is cursed
 *pycache*
 *pyc*
