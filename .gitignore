@@ -24,12 +24,13 @@ Models
 # Pycache is cursed
 *pycache*
 *pyc*
-*.pyc
+*.pyc*
 */*pyc*
 */*/*pyc*
 
 # Ignore large amounts of data that be generated elsewhere
 ProcessedData/2023_*
 *._DS_Store*
+*.DS_Store*
 
 # 
