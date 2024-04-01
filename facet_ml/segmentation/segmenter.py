@@ -27,6 +27,296 @@ from facet_ml.static.path import STATIC_MODELS
 from facet_ml.segmentation import features as feat
 
 
+from abc import ABC, abstractmethod, abstractproperty
+
+
+LABEL_INCREMENT = 20
+#### Segmenters ####
+# These just act on a given image, no foo-foo processing
+
+class AbstractSegmenter(ABC):
+    
+    @abstractmethod
+    def __init__(self,image):
+        self._image = image
+
+        self._label_increment = LABEL_INCREMENT
+        # Class variables
+        self._thresh = None
+        self._image_working = None
+        self._image_labeled = None
+        self._markers = None # Seeds for regions
+        self._markers_filled = None # The actual regions of interest
+
+    def reset_segmenter(self):
+        '''
+        For a segmenter, force the creation of:
+        cls.image
+        cls.threshold
+        cls.image
+        '''
+        self.image
+        self._thresh = None
+        self._image_working = None
+        self._image_labeled = None
+        self._markers = None # Seeds for regions
+        self._markers_filled = None # The actual regions of interest
+
+        raise NotImplemented
+    
+    @property
+    def image(self):
+        return self._image
+    
+    @image.setter
+    def image(self,new_image):
+        self._image = new_image
+        self.reset_segmenter()
+        
+    @abstractproperty
+    def thresh(self):
+        raise NotImplemented
+    
+    @property
+    def image_working(self):
+        raise NotImplemented
+    
+    @property
+    def image_labeled(self):
+        raise NotImplemented
+    
+    @property
+    def markers(self):
+        raise NotImplemented
+    
+    @abstractproperty
+    def markers_filled(self):
+        raise NotImplemented
+
+class AlgorithmicSegmenter(AbstractSegmenter):
+    def __init__(self,image,
+                 threshold_mode,
+                 edge_modification,
+                 kernel=np.ones((3, 3), np.uint8)):
+        
+        super().__init__(image)
+
+        # Implementation details
+        self.threshold_mode = threshold_mode
+        self.edge_modification = edge_modification
+        self.kernel = kernel
+
+        # Model details
+        self.pixel_model = None
+
+    @property
+    def thresh(self):
+        if self._thresh is None:
+        
+            # Get the basic threshold
+            # mapping : (bool fun, fun_to_call)
+            mapping_thresh = [
+                (lambda tm: tm == "otsu",thresholding.otsu_threshold),
+                (lambda tm: tm == "local",thresholding.local_threshold),
+                (lambda tm: tm == "pixel",thresholding.pixel_threshold),
+                (lambda tm: tm == "ensemble",thresholding.ensemble_threshold),
+                (lambda tm: isinstance(tm,list),thresholding.multi_threshold),
+            ]
+            thresh = None
+            for bool_fun,mapped_fun in mapping_thresh:
+                if bool_fun(self.threshold_mode):
+                    thresh = mapped_fun(self)
+            if thresh is None:
+                raise Exception(f"{self.threshold_mode} not supported")
+            
+            # Morphologically manipulate threshold
+            thresh = cv2.morphologyEx(
+                thresh, cv2.MORPH_OPEN, self.kernel, iterations=2
+            )
+            thresh = cv2.morphologyEx(
+                thresh, cv2.MORPH_CLOSE, self.kernel, iterations=1
+            )
+
+            # Apply edge considerations
+            mapping_edge = [
+                (lambda edge: edge == None, lambda s: np.full_like(s.image, 0).astype(np.uint8)),
+                (lambda edge: edge == "canny",em.edge_canny),
+                (lambda edge: edge == "variance",em.edge_variance),
+                (lambda edge: edge == "darkbright",em.edge_darkbright),
+                (lambda edge: edge == "classifier",em.edge_classifier),
+                (lambda edge: edge == "localthresh",em.edge_localthresh),
+                (lambda edge: edge == "testing",em.edge_testing),
+            ]
+            image_edges = None
+            for bool_fun,mapped_fun in mapping_edge:
+                if bool_fun(self.edge_modification):
+                    image_edges = mapped_fun(self)
+            if image_edges is None:
+                raise Exception(f"{self.edge_modification} not supported")
+            
+
+            self._thresh = thresh - image_edges
+        
+        return self._thresh
+    
+    @property
+    def markers(self):
+        if self._markers is None:
+            # Note: May need to do this before the edge_modification
+            self._bg_mark = cv2.dilate(self.thresh, self.kernel, iterations=1)
+            thresh_border = cv2.copyMakeBorder(
+                self.thresh,
+                top=1,
+                bottom=1,
+                right=1,
+                left=1,
+                borderType=cv2.BORDER_CONSTANT,
+                value=0,
+            )
+            self._dist_transform = cv2.distanceTransform(thresh_border, cv2.DIST_L2, 5)
+            self._dist_transform = self._dist_transform[1:-1, 1:-1]
+
+            # Sure foreground
+            scaling_rule = self._dist_transform.max() * 0.35
+            ret2, fg_mark = cv2.threshold(self._dist_transform, scaling_rule, 255, 0)
+            fg_mark = cv2.erode(fg_mark, self.kernel)
+            self._fg_mark = np.uint8(fg_mark)
+
+            ## Develop unknown region
+            self.unknown = cv2.subtract(self._bg_mark, self._fg_mark)
+
+            # Develop Regions
+            self.outputs = cv2.connectedComponentsWithStats(self._fg_mark)
+            self._markers = self.outputs[1] + self._label_increment
+            self._markers[self.unknown == 255] = 0
+        return self._markers
+    
+    @property
+    def markers_filled(self):
+        if not self._markers_filled:
+            temp_markers = copy.deepcopy(self.markers)
+            
+            image_blur = cv2.cvtColor( cv2.GaussianBlur(
+                self.image, (9, 9), 0
+            ), cv2.COLOR_GRAY2RGB)  # NOTE: What's the impact of this
+            self._markers_filled = cv2.watershed(image_blur, temp_markers)
+        return self._markers_filled
+
+    def load_pixel_segmenter(self):
+        """
+        Load the pixel classifer. Is a LARGE model, so only use this if needed
+        """
+        if not self.pixel_model:
+            with open(STATIC_MODELS["bg_segmenter"], "rb") as f:
+                self.pixel_model = pickle.load(f)
+    
+class MaskRCNNSegmenter(AbstractSegmenter):
+    
+    def __init__(self,image,
+                 ):
+        
+        super().__init__(image)
+
+    @property
+    def thresh(self):
+        if self._thresh is None:
+            self._thresh = np.full_like(self.image,0)
+        return self._thresh
+    
+    @property
+    def markers(self):
+        if self._markers is None:
+            self._markers = np.full_like(self.image,0)
+        return self._markers
+    
+    @property
+    def markers_filled(self):
+        if not self._markers_filled:
+            # Note to self: skimage.measure.label to leverage detectron2 model as a labeler
+            masks = detectron2_maskrcnn_solids( cv2.cvtColor( self.image,cv2.COLOR_GRAY2RGB) )
+            self._markers_filled = self._label_increment * np.ones(
+                np.shape(self.image)
+            )
+            num_markers, _, _ = np.shape(masks)
+            for ii in np.arange(num_markers):
+
+                mask_oi = masks[ii, :, :].astype(bool)
+                mask_bulk = cv2.erode(
+                    mask_oi.astype(np.uint8), kernel=np.ones((3, 3))
+                ).astype(bool)
+                mask_edge = ~mask_bulk & mask_oi
+                self._markers_filled[mask_edge] = -1
+                self._markers_filled[mask_bulk] = 1 + self._label_increment + ii
+            self._markers_filled = self._markers_filled.astype(int)
+        return self._markers_filled
+    
+class SAMSegmenter(AbstractSegmenter):
+    def __init__(self,image,
+                 device=None,
+                 sam_kwargs={
+                     "points_per_side":64
+                 }):
+        import torch 
+        super().__init__(image)
+        self.sam_kwargs = sam_kwargs
+        
+        if torch.cuda.is_available() and device == "cuda":
+                self.device = "cuda"
+        else:
+                self.device = "cpu"
+        torch.set_default_device(self.device)
+
+        # SAM Variable
+        self._mask_generator = None
+    
+    @property
+    def mask_generator(self):
+        if self._mask_generator is None:
+            
+            from segment_anything import (
+                    sam_model_registry,
+                    SamAutomaticMaskGenerator,
+                    SamPredictor,
+                )
+            model_type = "vit_l"
+            sam_checkpoint = STATIC_MODELS["segment_anything_vit_l"]
+            sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+            sam = sam.to(device=self.device)
+
+            mask_generator = SamAutomaticMaskGenerator(sam, **self.sam_kwargs)
+            self._mask_generator = mask_generator
+        return self._mask_generator
+    @property
+    def thresh(self):
+        if self._thresh is None:
+            self._thresh = np.full_like(self.image,0)
+        return self._thresh
+    
+    @property
+    def markers_filled(self):
+        if self._markers_filled is None:
+            masks = self.mask_generator.generate(cv2.cvtColor( self.image,cv2.COLOR_GRAY2RGB) )
+
+            self._markers_filled = self._label_increment * np.ones(
+                np.shape(self.image)
+            )
+            for ii, mask in enumerate(masks):
+                mask_oi = mask["segmentation"]
+                mask_bulk = cv2.erode(
+                    mask_oi.astype(np.uint8), kernel=np.ones((3, 3))
+                ).astype(bool)
+                mask_edge = ~mask_bulk & mask_oi
+                self._markers_filled[mask_edge] = -1
+                self._markers_filled[mask_bulk] = 1 + self._label_increment + ii
+            self._markers_filled = self._markers_filled.astype(int)  
+        return self._markers_filled
+
+segmenter_mapper = {
+    "maskrcnn":MaskRCNNSegmenter,
+    "segment_anything":SAMSegmenter,
+    "algorithmic":AlgorithmicSegmenter,
+}
+
 class ImageSegmenter:
 
     def __init__(
@@ -37,12 +327,11 @@ class ImageSegmenter:
         bottom_boundary=860,
         left_boundary=0,
         right_boundary=2560,
-        result_folder_path="../../Results",
+        result_folder_path="Results",
         override_exists=False,
-        threshold_mode: Union[callable, str] = "otsu",
-        edge_modification: Union[callable, str] = None,
         file_str=None,
-        sam_kwargs={"points_per_side": 64},
+        segmenter="otsu",
+        segmenter_kwargs=None,
         region_featurizers=[
             feat.AverageCurvatureFeaturizer(),
             feat.StdCurvatureFeaturizer(),
@@ -76,10 +365,8 @@ class ImageSegmenter:
         self.right_boundary = right_boundary
         self.result_folder_path = result_folder_path
         self.override_exists = override_exists
-        self.threshold_mode = threshold_mode
-        self.edge_modification = edge_modification
         self.file_str = file_str
-        self.sam_kwargs = sam_kwargs
+        self.segmenter_kwargs = segmenter_kwargs
         self.region_featurizers = region_featurizers
 
         # Image variables
@@ -89,8 +376,7 @@ class ImageSegmenter:
         self._image_labeled = None
         self._thresh = None
 
-        os.makedirs(self.result_folder_path, exist_ok=True)
-
+        
         # Define default image variables
         # NOTE: Will need to do something with this in the future for input
         self.canny_tl = 40
@@ -101,16 +387,27 @@ class ImageSegmenter:
         self.bilateral_d = 50
         self.bilateral_ss = 90
 
-        # Custom Pixel Classifier Variables
-        self.pixel_model = None
-        self.edge_model = None
+        # Segmenter instantiation
+        self._segmenter = None
+        if isinstance(segmenter,str):
+            self.segmenter_class = segmenter_mapper.get(segmenter,None)
+            if self.segmenter_class is None:
+                raise Exception(f"{segmenter} not mapped to a valid segmenter class.\nUse: {list(segmenter_mapper.keys())}")
+        elif isinstance(segmenter,AbstractSegmenter):
+            # If this is an instantiated AbstractSegmenter, set it
+            self._segmenter = segmenter
+        elif issubclass(segmenter,AbstractSegmenter):
+            # Assume this is a
+            self.segmenter_class = segmenter
+        else:
+            raise Exception(f"{segmenter} is not mappable str, " |
+                            "an object inheriting AbstractSegmenter, " |
+                            "or a class that inherits AbstractSegmenter"
+                            )
+    
 
         # hidden variables
-        self._img_edge = None
-        self._edge_highlight = None
-        self._live_edges = None
-        self._dist_transform = None
-        self._label_increment = 20
+        self._label_increment = LABEL_INCREMENT
         self._df = None
         self._region_arr = None
         self._region_dict = None
@@ -118,12 +415,17 @@ class ImageSegmenter:
         # PyQt variables
         self._region_tracker = None  # Used for keeping tabs on where in region list we are, created in self.df
 
-        # Segment Anything Model variables
-        self._mask_generator = None
-
         # Input path stuff
         # Input Path
         self.input_path = self._input_path
+
+    def reset(self):
+        self._df = None
+        self._image_read = None
+        self._image_cropped = None
+        self._image_working = None
+        self._image_labeled = None
+        self._thresh = None
 
     @property
     def input_path(self):
@@ -134,12 +436,7 @@ class ImageSegmenter:
         self._input_path = value
         if self._input_path is not None:
             # Clear the dataframe and labeled_image, if it exists
-            self._df = None
-            self._image_read = None
-            self._image_cropped = None
-            self._image_working = None
-            self._image_labeled = None
-            self._thresh = None
+            self.reset()
 
             # Redefine internal paths (these may be removed at some point)
             if isinstance(self._input_path, str):
@@ -158,6 +455,13 @@ class ImageSegmenter:
             self._csv_file = f"{self.result_folder_path}/values_{self._file_name}_{self.file_str}.csv"
 
             # self.process_images(edge_modification=self.edge_modification)
+
+    @property
+    def segmenter(self):
+        if self._segmenter is None:
+            self._segmenter = self._segmenter_class(self.image_cropped, 
+                                  **self.segmenter_kwargs)
+        return self._segmenter
 
     @property
     def image_read(self):
@@ -185,9 +489,11 @@ class ImageSegmenter:
 
     @property
     def thresh(self):
-        if self._thresh is None:
-            self.process_images()
-        return self._thresh
+        return self.segmenter.thresh
+    
+    @property
+    def markers_filled(self):
+        return self.segmenter.markers_filled
 
     def process_images(self, blur=False, edge_modification=False, use_bilateral=False):
         """
@@ -208,10 +514,8 @@ class ImageSegmenter:
             self.left_boundary : self.right_boundary,
         ]
 
-        self._thresh = np.full_like(self.image_cropped, 0)
-
         # Perform segmentation
-        self.set_markers(edge_modification=edge_modification)
+        # self.set_markers(edge_modification=edge_modification)
 
         # Set regions by number, non-inclusive of background and edge border
         self.regions_list = np.unique(self.markers) - self._label_increment
@@ -651,6 +955,7 @@ class ImageSegmenter:
 
     def create_csv(self):
         if self.override_exists:
+            os.makedirs(self.result_folder_path, exist_ok=True)
             self.df.to_csv(self._csv_file)
         else:
             print("WARNING: Override not in place")
