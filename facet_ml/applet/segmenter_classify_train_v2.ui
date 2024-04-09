@@ -78,16 +78,16 @@
      </property>
      <layout class="QHBoxLayout" name="optionsLayout">
       <item>
-       <layout class="QVBoxLayout" name="thresholdMethodLayout">
+       <layout class="QVBoxLayout" name="segmentMethodLayout">
         <item>
-         <widget class="QLabel" name="thresholdLabel">
+         <widget class="QLabel" name="segmentLabel">
           <property name="text">
-           <string>Threshold Method</string>
+           <string>Segment Method</string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QComboBox" name="thresholdMethodComboBox">
+         <widget class="QComboBox" name="segmentMethodComboBox">
           <property name="editable">
            <bool>false</bool>
           </property>
@@ -162,7 +162,7 @@
       </item>
      </layout>
     </widget>
-    <widget class="QLabel" name="thresholdImageTitleLabel">
+    <widget class="QLabel" name="segmentImageTitleLabel">
      <property name="geometry">
       <rect>
        <x>10</x>
@@ -172,10 +172,10 @@
       </rect>
      </property>
      <property name="text">
-      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:18pt; font-weight:600;&quot;&gt;Threshold&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:18pt; font-weight:600;&quot;&gt;Segment&lt;/span&gt;&lt;/p&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
      </property>
     </widget>
-    <widget class="QLabel" name="thresholdImagePixLabel">
+    <widget class="QLabel" name="segmentImagePixLabel">
      <property name="geometry">
       <rect>
        <x>10</x>

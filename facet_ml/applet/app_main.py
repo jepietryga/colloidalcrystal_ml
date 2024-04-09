@@ -8,15 +8,32 @@ import os
 import glob
 from pathlib import Path
 from facet_ml.segmentation.segmenter import BatchImageSegmenter,ImageSegmenter
+from facet_ml.segmentation.segmenter import (
+    AlgorithmicSegmenter,
+    MaskRCNNSegmenter,
+    SAMSegmenter
+)
 import h5py
 
-threshold_mode_mapper = {
-    "Otsu (Global) Binarization":"otsu",
-    "Local Threshold":"local",
-    "Pixel Classifier":"pixel",
-    "Ensemble":"ensemble",
-    "Detectron2":"detectron2",
-    "Segment Anything":"segment_anything"
+segment_mode_mapper = {
+    "Otsu (Global) Binarization":{"segmenter":AlgorithmicSegmenter,
+                                  "segmenter_kwargs":{"threshold_mode":"otsu"},
+                                },
+    "Local Threshold":{"segmenter":AlgorithmicSegmenter,
+                                  "segmenter_kwargs":{"threshold_mode":"localthresh"},
+                                },
+    "Pixel Classifier":{"segmenter":AlgorithmicSegmenter,
+                                  "segmenter_kwargs":{"threshold_mode":"pixel"},
+                                },
+    "Ensemble":{"segmenter":AlgorithmicSegmenter,
+                                  "segmenter_kwargs":{"threshold_mode":"ensemble"},
+                                },
+    "Detectron2":{"segmenter":MaskRCNNSegmenter,
+                                  "segmenter_kwargs":{},
+                                },
+    "Segment Anything":{"segmenter":SAMSegmenter,
+                                  "segmenter_kwargs":{"points_per_side":64},
+                                },
 }
 
 edge_mode_mapper = {
@@ -64,9 +81,8 @@ class Ui(QtWidgets.QDialog):
 #class Ui(QtWidgets):
     def __init__(self):
         super(Ui,self).__init__()
-        paath = "/Users/jacobpietryga/Desktop/Academics/colloidal_crystal_ML/facet_ml/applet/segmenter_classify_train_v2.ui"
-        #uic.loadUi( os.path.join(__file__,'segmenter_classify_train_v2.ui'),self)
-        uic.loadUi( paath,self)
+        path = Path(__file__).parent / 'segmenter_classify_train_v2.ui'
+        uic.loadUi( path,self)
 
         # Check cv images
         self.batch_image_segmenter = None
@@ -149,14 +165,18 @@ class Ui(QtWidgets.QDialog):
         self.update_image_segmenter()
 
     def perform_segmentation(self):
-        threshold_mode = self.thresholdMethodComboBox.currentText()
+        segment_mode = self.segmentMethodComboBox.currentText()
         edge_mode = self.edgeMethodMethodComboBox.currentText()
 
         # Re-runs everything and updates visible image_segmenter
         self.update_image_reading()
+
+        segmenter_mode = segment_mode_mapper[segment_mode]
+        edge_modification = edge_mode_mapper[edge_mode]
+        if isinstance(segmenter_mode["segmenter"],AlgorithmicSegmenter):
+            segmenter_mode["segmenter_kwargs"] = segmenter_mode["segmenter_kwargs"] | {"edge_modification":edge_modification}
         self.batch_image_segmenter = BatchImageSegmenter(self.files_list,
-                                            threshold_mode=threshold_mode_mapper[threshold_mode],
-                                            edge_modification=edge_mode_mapper[edge_mode],
+                                            **segmenter_mode,
                                             top_boundary=self.top_boundary,
                                             bottom_boundary=self.bottom_boundary,
                                             right_boundary=self.right_boundary,
@@ -293,12 +313,12 @@ class Ui(QtWidgets.QDialog):
     def refresh_segmenter_tab(self):
         input_pix = cv_to_QPixMap(self.image_segmenter.image_read)
         thresh_pix = cv_to_QPixMap(self.image_segmenter.thresh)
-        markers_pix = cv_to_QPixMap(self.image_segmenter.markers2)
+        markers_pix = cv_to_QPixMap(self.image_segmenter.markers_filled)
 
         self.inputImagePixLabel.setPixmap(input_pix)
         self.inputImagePixLabel.setScaledContents(True)
-        self.thresholdImagePixLabel.setPixmap(thresh_pix)
-        self.thresholdImagePixLabel.setScaledContents(True)
+        self.segmentImagePixLabel.setPixmap(thresh_pix)
+        self.segmentImagePixLabel.setScaledContents(True)
         self.markersImagePixLabel.setPixmap(markers_pix)
         self.markersImagePixLabel.setScaledContents(True)
         
