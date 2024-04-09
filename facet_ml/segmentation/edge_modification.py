@@ -2,6 +2,8 @@ import numpy as np
 import copy
 import cv2
 from skimage.filters import threshold_local
+from functools import partial
+from skimage import feature, future
 
 def neighborhood_maxima(img,grid_spacing):
     '''
@@ -233,6 +235,42 @@ def edge_darkbright(self):
     self._live_edges = live_edges
 
     return live_edges
+
+def _edge_pixel_classifier(self):
+        """
+        Experimental:
+        Given a RandomForest pixel classifier, identify which edges are valid overlap or facet
+
+        """
+        # Load model
+        self._load_edge_classifier()
+
+        # Featurize Image
+        sigma_min = 1
+        sigma_max = 32
+        features_func = partial(
+            feature.multiscale_basic_features,
+            intensity=False,
+            edges=True,
+            texture=True,
+            sigma_min=sigma_min,
+            sigma_max=sigma_max,
+            channel_axis=None,
+        )
+        features = features_func(self.image_cropped)
+
+        # Flatten features
+        (x, y, z) = features.shape
+        features = features.reshape(x * y, z)
+
+        # Predict
+        results = future.predict_segmenter(features, self.edge_model)
+
+        # Reshape
+        thresh = 255 * (
+            results.reshape(x, y).astype(np.uint8) - 1
+        )  # To make Overlap and Facet
+        return thresh
 
 def edge_classifier(self):
     # Get masking info

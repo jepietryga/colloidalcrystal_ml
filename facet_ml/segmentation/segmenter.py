@@ -95,8 +95,8 @@ class AbstractSegmenter(ABC):
 
 class AlgorithmicSegmenter(AbstractSegmenter):
     def __init__(self,image,
-                 threshold_mode,
-                 edge_modification,
+                 threshold_mode="otsu",
+                 edge_modification=None,
                  kernel=np.ones((3, 3), np.uint8)):
         
         super().__init__(image)
@@ -193,7 +193,7 @@ class AlgorithmicSegmenter(AbstractSegmenter):
     
     @property
     def markers_filled(self):
-        if not self._markers_filled:
+        if self._markers_filled is None:
             temp_markers = copy.deepcopy(self.markers)
             
             image_blur = cv2.cvtColor( cv2.GaussianBlur(
@@ -231,7 +231,7 @@ class MaskRCNNSegmenter(AbstractSegmenter):
     
     @property
     def markers_filled(self):
-        if not self._markers_filled:
+        if self._markers_filled is None:
             # Note to self: skimage.measure.label to leverage detectron2 model as a labeler
             masks = detectron2_maskrcnn_solids( cv2.cvtColor( self.image,cv2.COLOR_GRAY2RGB) )
             self._markers_filled = self._label_increment * np.ones(
@@ -330,8 +330,8 @@ class ImageSegmenter:
         result_folder_path="Results",
         override_exists=False,
         file_str=None,
-        segmenter="otsu",
-        segmenter_kwargs=None,
+        segmenter:str="algorithmic",
+        segmenter_kwargs:dict={},
         region_featurizers=[
             feat.AverageCurvatureFeaturizer(),
             feat.StdCurvatureFeaturizer(),
@@ -415,8 +415,7 @@ class ImageSegmenter:
         # PyQt variables
         self._region_tracker = None  # Used for keeping tabs on where in region list we are, created in self.df
 
-        # Input path stuff
-        # Input Path
+        # Initialize input path
         self.input_path = self._input_path
 
     def reset(self):
@@ -444,13 +443,16 @@ class ImageSegmenter:
                     self.input_path.split("/")[-1].split(".")[:-1]
                 )
             else:
-                self.input_path = "tmp.png"
+                temp_image = self._input_path
+                self._input_path = "tmp.png"
                 self._file_name = "tmp"
+                print(self._input_path)
                 cv2.imwrite(
                     f"{self._file_name}.png",
-                    self._input_path,
+                    temp_image,
                     [cv2.IMWRITE_PNG_COMPRESSION, 0],
                 )
+                #cv2.imwrite()
 
             self._csv_file = f"{self.result_folder_path}/values_{self._file_name}_{self.file_str}.csv"
 
@@ -459,7 +461,7 @@ class ImageSegmenter:
     @property
     def segmenter(self):
         if self._segmenter is None:
-            self._segmenter = self._segmenter_class(self.image_cropped, 
+            self._segmenter = self.segmenter_class(self.image_cropped, 
                                   **self.segmenter_kwargs)
         return self._segmenter
 
@@ -492,6 +494,10 @@ class ImageSegmenter:
         return self.segmenter.thresh
     
     @property
+    def markers(self):
+        return self.segmenter.markers
+    
+    @property
     def markers_filled(self):
         return self.segmenter.markers_filled
 
@@ -502,6 +508,7 @@ class ImageSegmenter:
         """
         if self.input_path is None:
             raise Exception("Error: ImageSegmenter has no input_path")
+        
         # Raw Read-in
         self._image_read = cv2.imread(self.input_path, 0)
         self._image_cropped = self.image_read[
@@ -518,315 +525,11 @@ class ImageSegmenter:
         # self.set_markers(edge_modification=edge_modification)
 
         # Set regions by number, non-inclusive of background and edge border
-        self.regions_list = np.unique(self.markers) - self._label_increment
+        # NOTE: markers was originally used, may be necessary...?
+        self.regions_list = np.unique(self.markers_filled) - self._label_increment
         self.regions_list = [x for x in self.regions_list if x > 0]
 
-        self._image_labeled = color.label2rgb(self.markers2, bg_label=0)
-        # self.decorate_regions()
-
-    def set_markers(
-        self,
-        edge_modification=False,
-    ):
-        """
-        Create and set markers via segmentation method of choice
-        Process will threshold, perform morphologoical operations, and then watershed
-        """
-
-        # If using detectron, the threshold creation scheme is NOT NEEDED
-        if self.threshold_mode == "detectron2":
-            # Note to self: skimage.measure.label to leverage detectron2 model as a labeler
-            masks = detectron2_maskrcnn_solids(self.image_working)
-            self.markers2 = self._label_increment * np.ones(
-                np.shape(self.image_cropped)
-            )
-            num_markers, _, _ = np.shape(masks)
-            for ii in np.arange(num_markers):
-
-                mask_oi = masks[ii, :, :].astype(bool)
-                mask_bulk = cv2.erode(
-                    mask_oi.astype(np.uint8), kernel=np.ones((3, 3))
-                ).astype(bool)
-                mask_edge = ~mask_bulk & mask_oi
-                self.markers2[mask_edge] = -1
-                self.markers2[mask_bulk] = 1 + self._label_increment + ii
-            self.markers = copy.deepcopy(self.markers2).astype(int)
-            self.markers2 = self.markers2.astype(int)
-            return
-
-        if self.threshold_mode == "segment_anything":
-            if self._mask_generator == None:
-                from segment_anything import (
-                    sam_model_registry,
-                    SamAutomaticMaskGenerator,
-                    SamPredictor,
-                )
-                import torch
-
-                model_type = "vit_l"
-                sam_checkpoint = STATIC_MODELS["segment_anything_vit_l"]
-                device_arg = self.sam_kwargs.get("device", "cpu")
-                if torch.cuda.is_available() and device_arg == "cuda":
-                    device = "cuda"
-                else:
-                    device = "cpu"
-                torch.set_default_device(device)
-                sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-                sam = sam.to(device=device)
-                sam_kwargs = copy.deepcopy(self.sam_kwargs)
-                sam_kwargs.pop("device")
-                mask_generator = SamAutomaticMaskGenerator(sam, **sam_kwargs)
-                self._mask_generator = mask_generator
-            masks = self._mask_generator.generate(self.image_working)
-
-            self.markers2 = self._label_increment * np.ones(
-                np.shape(self.image_cropped)
-            )
-            for ii, mask in enumerate(masks):
-                mask_oi = mask["segmentation"]
-                mask_bulk = cv2.erode(
-                    mask_oi.astype(np.uint8), kernel=np.ones((3, 3))
-                ).astype(bool)
-                mask_edge = ~mask_bulk & mask_oi
-                self.markers2[mask_edge] = -1
-                self.markers2[mask_bulk] = 1 + self._label_increment + ii
-            self.markers = copy.deepcopy(self.markers2).astype(int)
-            self.markers2 = self.markers2.astype(int)
-            return
-
-        ## Threshold and Get background
-        kernel = self.kernel
-
-        self._thresh = self._generate_threshold()
-        self._thresh = cv2.morphologyEx(
-            self.thresh, cv2.MORPH_OPEN, kernel, iterations=2
-        )
-        self._thresh = cv2.morphologyEx(
-            self.thresh, cv2.MORPH_CLOSE, kernel, iterations=1
-        )
-
-        # Sure Background
-        self._bg_mark = cv2.dilate(self.thresh, kernel, iterations=1)
-        self._pre_thresh = copy.deepcopy(self.thresh)
-
-        if edge_modification:
-            self._perform_edge_modification()  # Adds "background" for dist transform to catch
-
-        ## Distance transform and foreground
-        # Add 0 border, distance transform, remove 0 border
-        thresh_border = cv2.copyMakeBorder(
-            self.thresh,
-            top=1,
-            bottom=1,
-            right=1,
-            left=1,
-            borderType=cv2.BORDER_CONSTANT,
-            value=0,
-        )
-        self._dist_transform = cv2.distanceTransform(thresh_border, cv2.DIST_L2, 5)
-        self._dist_transform = self._dist_transform[1:-1, 1:-1]
-
-        # Sure foreground
-        scaling_rule = self._dist_transform.max() * 0.35
-        ret2, fg_mark = cv2.threshold(self._dist_transform, scaling_rule, 255, 0)
-        fg_mark = cv2.erode(fg_mark, kernel)
-        self._fg_mark = np.uint8(fg_mark)
-
-        ## Develop unknown region
-        self.unknown = cv2.subtract(self._bg_mark, self._fg_mark)
-
-        # Develop Regions
-        self.outputs = cv2.connectedComponentsWithStats(self._fg_mark)
-        self.markers = self.outputs[1] + self._label_increment
-        self.markers[self.unknown == 255] = 0
-        temp_markers = copy.deepcopy(self.markers)
-        # print(np.shape(self.image_cropped),np.shape(self.image_working))
-        image_working_blur = cv2.GaussianBlur(
-            self.image_working, (9, 9), 0
-        )  # NOTE: What's the impact of this
-        self.markers2 = cv2.watershed(image_working_blur, temp_markers)
-
-    def _clean_markers2(self):
-        """
-        TESTING
-        Method should be able to smooth out issues w/ Markers by individually modifying them
-        May not work well with large data
-        """
-
-        # NOTE: need to recreated background for each marker, too!
-        marker2_working = self.markers2.copy()
-        for region_oi in self.df.Region.unique():
-            marker_oi = region_oi + self._label_increment
-            marker_mask = self.markers2.copy()
-            marker_logical = marker_oi == marker_mask
-            marker_mask[~marker_logical] = 0
-            marker_mask[marker_logical] = 255
-
-            kernel = np.ones([3, 3])
-            marker_mask = cv2.erode(marker_mask.astype(np.uint8), kernel, iterations=5)
-            marker_mask = cv2.dilate(marker_mask, kernel, iterations=5)
-            marker_edge = cv2.dilate(marker_mask, kernel, iterations=1) - marker_mask
-            marker2_working[marker_mask.astype(bool)] = marker_oi
-            marker2_working[marker_edge.astype(bool)] = -1
-        return marker2_working
-
-    def _generate_threshold(self, blur=None, threshold_mode=None):
-        """
-        Method of creating threshold, uses different modes
-        """
-        if threshold_mode == None:
-            threshold_mode = self.threshold_mode
-
-        if threshold_mode == "otsu":
-            thresh = thresholding.otsu_threshold(self, blur)
-
-        elif threshold_mode == "pixel":
-            thresh = thresholding.pixel_threshold(self)
-
-        elif threshold_mode == "local":
-            thresh = thresholding.local_threshold(self)
-
-        elif threshold_mode == "ensemble":
-            threshold_mode = [
-                thresholding.otsu_threshold,
-                thresholding.local_threshold,
-                thresholding.pixel_threshold,
-            ]
-            thresh = self._generate_threshold(threshold_mode=threshold_mode)
-
-        elif isinstance(threshold_mode, list):
-            tracker = np.full_like(self.image_cropped, 0).astype(np.uint8)
-
-            # Loop through all functions
-            for thresh_func in threshold_mode:
-                thresh_temp = thresh_func(self)
-                print(np.shape(tracker))
-                tracker = np.add(tracker, thresh_temp.astype(bool).astype(np.uint8))
-
-            thresh = np.full_like(self.image_cropped, 0).astype(np.uint8)
-            thresh[tracker <= len(threshold_mode) / 2] = 0
-            thresh[tracker > len(threshold_mode) / 2] = 255
-
-        elif callable(threshold_mode):
-            thresh = threshold_mode(self)
-
-        return thresh
-
-    def _load_edge_classifier(self):
-        """
-        Load the pixel classifer. Is a LARGE model, so only use this if needed
-        """
-        if not self.edge_model:
-            with open(STATIC_MODELS["edge_classifier"], "rb") as f:
-                self.edge_model = pickle.load(f)
-
-    def _edge_pixel_classifier(self):
-        """
-        Experimental:
-        Given a RandomForest pixel classifier, identify which edges are valid overlap or facet
-
-        """
-        # Load model
-        self._load_edge_classifier()
-
-        # Featurize Image
-        sigma_min = 1
-        sigma_max = 32
-        features_func = partial(
-            feature.multiscale_basic_features,
-            intensity=False,
-            edges=True,
-            texture=True,
-            sigma_min=sigma_min,
-            sigma_max=sigma_max,
-            channel_axis=None,
-        )
-        features = features_func(self.image_cropped)
-
-        # Flatten features
-        (x, y, z) = features.shape
-        features = features.reshape(x * y, z)
-
-        # Predict
-        results = future.predict_segmenter(features, self.edge_model)
-
-        # Reshape
-        thresh = 255 * (
-            results.reshape(x, y).astype(np.uint8) - 1
-        )  # To make Overlap and Facet
-        return thresh
-
-    def _perform_edge_modification(self, edge_modification=None):
-        """
-        Perform edge modification of threshold using internal schemes
-
-        dark_bright: Use dark_bright edge detection scheme
-        """
-
-        if not edge_modification:
-            edge_modification = self.edge_modification
-            # print(edge_modification)
-
-        if edge_modification == None:
-            img_edges = np.full_like(self.image_cropped, 0).astype(np.uint8)
-            return
-        elif edge_modification == "canny":
-            img_edges = em.edge_canny(self)
-
-        elif edge_modification == "variance":
-            img_edges = em.edge_variance(self)
-
-        elif (
-            edge_modification == "darkbright"
-        ):  # Note: Probably add this as separate utility
-            img_edges = em.edge_darkbright(self)
-
-        elif edge_modification == "classifier":
-            img_edges = em.edge_classifier(self)
-
-        elif edge_modification == "localthresh":
-            img_edges = em.edge_localthresh(self)
-
-        elif edge_modification == "testing":
-            img_edges = em.edge_testing(self)
-
-        if img_edges is not None:
-            self.thresh = self.thresh - img_edges
-        else:
-            # Assume something occurred in the function that
-            # we wanted to happen
-            return
-
-    @property
-    def img_edge(self):
-        if self._img_edge is None:
-            # This should be identical to "localthresh"
-            # Get Masking info
-            image_cropped_blur = cv2.GaussianBlur(
-                self.image_cropped, (9, 9), cv2.BORDER_DEFAULT
-            )
-            thresh = threshold_local(image_cropped_blur, 35, offset=10)
-            mask = self.image_cropped > thresh
-            mask = em.quick_close(mask, 3, neighbor_threshold=7)
-            # mask = cv2.morphologyEx(mask.astype(np.uint8),)
-            mask = cv2.dilate(mask.astype(np.uint8), np.ones([3, 3]))
-            mask = cv2.erode(mask.astype(np.uint8), np.ones([3, 3]), iterations=2)
-            img_logical = mask == 0
-            # cv2.imwrite(f"localthresh{self._file_name}.png",img_logical.astype(np.uint8)*255)
-            # Get Canny Edge
-            canny_args = [(5, 5), 10, 60, 80, 80, False]
-            canny_edge = self.canny_edge(*canny_args)
-            # This is used for "FACET SCORE"
-            self._img_edge = copy.deepcopy(canny_edge)
-        return self._img_edge
-
-    def load_pixel_segmenter(self):
-        """
-        Load the pixel classifer. Is a LARGE model, so only use this if needed
-        """
-        if not self.pixel_model:
-            with open(STATIC_MODELS["bg_segmenter"], "rb") as f:
-                self.pixel_model = pickle.load(f)
+        self._image_labeled = color.label2rgb(self.markers_filled, bg_label=0)
 
     def decorate_regions(self):
         """
@@ -855,7 +558,7 @@ class ImageSegmenter:
     @property
     def df(
         self,
-    ):  # Might not actually want this to be cached if we're making this interactive...
+        ):  
         if self._df is None:
             # Make sure to instantiate the images
             self.image_labeled
@@ -888,7 +591,7 @@ class ImageSegmenter:
                 "label",
             ]
             clusters = measure.regionprops_table(
-                self.markers2 - self._label_increment,
+                self.markers_filled - self._label_increment,
                 self.image_cropped,
                 properties=propList,
             )
@@ -979,12 +682,12 @@ class ImageSegmenter:
         group.create_dataset("image_working", data=self.image_working)
         group.create_dataset("image_labeled", data=self.image_labeled)
         group.create_dataset("thresh", data=self.thresh)
-        group.create_dataset("markers2", data=self.markers2)
+        group.create_dataset("markers_filled", data=self.markers_filled)
 
         # Load in all regions identified
         # dset = group.create_dataset("Regions",shape=(len(self.df),*np.shape(self.markers2)))
         dset = group.create_dataset(
-            "Regions", shape=(self.df.Region.max(), *np.shape(self.markers2))
+            "Regions", shape=(self.df.Region.max(), *np.shape(self.markers_filled))
         )
         for ii, (key, region) in enumerate(
             self.grab_region_dict(self.image_cropped, focused=False, alpha=0).items()
@@ -999,8 +702,8 @@ class ImageSegmenter:
     def _grab_region(self, img, region_oi, alpha=0.75, buffer=20):
         label_oi = region_oi + self._label_increment
         mod_image = copy.deepcopy(img)
-        label_marker = copy.deepcopy(self.markers2)
-        label_marker[self.markers2 != label_oi] = 0
+        label_marker = copy.deepcopy(self.markers_filled)
+        label_marker[self.markers_filled != label_oi] = 0
 
         y1 = grab_bound(label_marker, "top", buffer)
         y2 = grab_bound(label_marker, "bottom", buffer)
@@ -1203,7 +906,30 @@ class ImageSegmenter:
 
 
 class BatchImageSegmenter:
-
+    '''
+        self,
+        input_path=None,
+        pixels_to_um=9.37,
+        top_boundary=0,
+        bottom_boundary=860,
+        left_boundary=0,
+        right_boundary=2560,
+        result_folder_path="Results",
+        override_exists=False,
+        file_str=None,
+        segmenter:str="algorithmic",
+        segmenter_kwargs:dict={},
+        region_featurizers=[
+            feat.AverageCurvatureFeaturizer(),
+            feat.StdCurvatureFeaturizer(),
+            feat.MinCurvatureFeaturizer(),
+            feat.MaxCurvatureFeaturizer(),
+            feat.PercentConvexityCurvatureFeaturizer(),
+            feat.LongestContiguousConcavityCurvatureFeaturizer(),
+            feat.LongestContiguousConvexityCurvatureFeaturizer(),
+            feat.DistinctPathsCurvatureFeaturizer(),
+        ],
+    '''
     def __init__(
         self,
         img_list=None,
@@ -1213,10 +939,20 @@ class BatchImageSegmenter:
         bottom_boundary=860,
         left_boundary=0,
         right_boundary=2560,
-        result_folder_path="../../Results",
-        override_exists=False,
-        threshold_mode: Union[callable, str] = "otsu",
-        edge_modification: Union[callable, str] = None,
+        result_folder_path="Results",
+        override_exists:bool=True,
+        segmenter:str="algorithmic",
+        segmenter_kwargs:dict={},
+        region_featurizers=[
+            feat.AverageCurvatureFeaturizer(),
+            feat.StdCurvatureFeaturizer(),
+            feat.MinCurvatureFeaturizer(),
+            feat.MaxCurvatureFeaturizer(),
+            feat.PercentConvexityCurvatureFeaturizer(),
+            feat.LongestContiguousConcavityCurvatureFeaturizer(),
+            feat.LongestContiguousConvexityCurvatureFeaturizer(),
+            feat.DistinctPathsCurvatureFeaturizer(),
+        ],
         file_str=None,
     ):
         """
@@ -1234,8 +970,8 @@ class BatchImageSegmenter:
         self.right_boundary = right_boundary
         self.result_folder_path = result_folder_path
         self.override_exists = override_exists
-        self.threshold_mode = threshold_mode
-        self.edge_modification = edge_modification
+        self.segmenter = segmenter
+        self.segmenter_kwargs = segmenter_kwargs
         self.file_str = file_str
 
         # Template
@@ -1247,8 +983,9 @@ class BatchImageSegmenter:
             right_boundary=self.right_boundary,
             result_folder_path=self.result_folder_path,
             override_exists=self.override_exists,
-            threshold_mode=self.threshold_mode,
-            edge_modification=self.edge_modification,
+            segmenter=self.segmenter,
+            segmenter_kwargs=self.segmenter_kwargs,
+            region_featurizers=region_featurizers,
             file_str=self.file_str,
         )
 
