@@ -6,5 +6,8 @@ pandas==1.4.3
 scipy==1.9.0
 scikit_image==0.19.3
 heatmapz
-opencv-python
+opencv-python==4.8.0.76
 jupyter
+scikit-learn==1.2.0
+pyqt5==5.15.10
+h5py==3.10.0
