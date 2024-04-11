@@ -12,3 +12,6 @@ version = '0.1.0'
 [project]
 name = 'facet_ml'
 version = '0.1.0'
+
+[project.scripts]
+applet = "facet_ml.applet.app_main:run_app"

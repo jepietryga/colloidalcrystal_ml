@@ -38,6 +38,12 @@ class AbstractSegmenter(ABC):
     
     @abstractmethod
     def __init__(self,image):
+        '''
+        Abstractable Class for creating segmentation schemes
+        
+        Args:
+            image (np.ndarray) : Image to be segmented
+        '''
         self._image = image
 
         self._label_increment = LABEL_INCREMENT
@@ -50,10 +56,7 @@ class AbstractSegmenter(ABC):
 
     def reset_segmenter(self):
         '''
-        For a segmenter, force the creation of:
-        cls.image
-        cls.threshold
-        cls.image
+        For a segmenter, remove all internal images
         '''
         self.image
         self._thresh = None
@@ -94,11 +97,42 @@ class AbstractSegmenter(ABC):
         raise NotImplemented
 
 class AlgorithmicSegmenter(AbstractSegmenter):
-    def __init__(self,image,
-                 threshold_mode="otsu",
-                 edge_modification=None,
-                 kernel=np.ones((3, 3), np.uint8)):
-        
+    
+    mapping_thresh = [
+                (lambda tm: tm == "otsu",thresholding.otsu_threshold),
+                (lambda tm: tm == "local",thresholding.local_threshold),
+                (lambda tm: tm == "pixel",thresholding.pixel_threshold),
+                (lambda tm: tm == "ensemble",thresholding.ensemble_threshold),
+                (lambda tm: isinstance(tm,list),thresholding.multi_threshold),
+            ]
+    
+    mapping_edge = [
+                (lambda edge: edge == None, lambda s: np.full_like(s.image, 0).astype(np.uint8)),
+                (lambda edge: edge == "canny",em.edge_canny),
+                (lambda edge: edge == "variance",em.edge_variance),
+                (lambda edge: edge == "darkbright",em.edge_darkbright),
+                (lambda edge: edge == "classifier",em.edge_classifier),
+                (lambda edge: edge == "localthresh",em.edge_localthresh),
+                (lambda edge: edge == "testing",em.edge_testing),
+            ]
+    
+    def __init__(self,
+                 image:np.ndarray,
+                 threshold_mode:str|list="otsu",
+                 edge_modification:str=None,
+                 kernel:np.ndarray=np.ones((3, 3), np.uint8)):
+        '''
+        Create a Segmenter class which has mappings to 
+        mapping_thresh and mapping_edge
+
+        Args:
+            image (np.ndarray) : Image to be segmented
+            threshold_mode (str | list) : Use a method that returns a threshold. 
+                    Provide a list for ensemble or custom algorithms
+            edge_modification (str) : Additional algorithm for adding edges to threshold methods
+            kernel (np.ndarray) : Kernel used for morphological transforms (erode, dilate)
+        '''
+
         super().__init__(image)
 
         # Implementation details
@@ -115,15 +149,9 @@ class AlgorithmicSegmenter(AbstractSegmenter):
         
             # Get the basic threshold
             # mapping : (bool fun, fun_to_call)
-            mapping_thresh = [
-                (lambda tm: tm == "otsu",thresholding.otsu_threshold),
-                (lambda tm: tm == "local",thresholding.local_threshold),
-                (lambda tm: tm == "pixel",thresholding.pixel_threshold),
-                (lambda tm: tm == "ensemble",thresholding.ensemble_threshold),
-                (lambda tm: isinstance(tm,list),thresholding.multi_threshold),
-            ]
+            
             thresh = None
-            for bool_fun,mapped_fun in mapping_thresh:
+            for bool_fun,mapped_fun in AlgorithmicSegmenter.mapping_thresh:
                 if bool_fun(self.threshold_mode):
                     thresh = mapped_fun(self)
             if thresh is None:
@@ -138,17 +166,8 @@ class AlgorithmicSegmenter(AbstractSegmenter):
             )
 
             # Apply edge considerations
-            mapping_edge = [
-                (lambda edge: edge == None, lambda s: np.full_like(s.image, 0).astype(np.uint8)),
-                (lambda edge: edge == "canny",em.edge_canny),
-                (lambda edge: edge == "variance",em.edge_variance),
-                (lambda edge: edge == "darkbright",em.edge_darkbright),
-                (lambda edge: edge == "classifier",em.edge_classifier),
-                (lambda edge: edge == "localthresh",em.edge_localthresh),
-                (lambda edge: edge == "testing",em.edge_testing),
-            ]
             image_edges = None
-            for bool_fun,mapped_fun in mapping_edge:
+            for bool_fun,mapped_fun in AlgorithmicSegmenter.mapping_edge:
                 if bool_fun(self.edge_modification):
                     image_edges = mapped_fun(self)
             if image_edges is None:
@@ -212,9 +231,15 @@ class AlgorithmicSegmenter(AbstractSegmenter):
     
 class MaskRCNNSegmenter(AbstractSegmenter):
     
-    def __init__(self,image,
+    def __init__(self,
+                 image:np.ndarray,
                  ):
-        
+        '''
+        Create a Segmenter class which uses a MaskRCNN model from detectron2
+
+        Args:
+            image (np.ndarray) : Image to be segmented
+        '''
         super().__init__(image)
 
     @property
@@ -251,11 +276,20 @@ class MaskRCNNSegmenter(AbstractSegmenter):
         return self._markers_filled
     
 class SAMSegmenter(AbstractSegmenter):
-    def __init__(self,image,
-                 device=None,
-                 sam_kwargs={
+    def __init__(self,image:np.ndarray,
+                 device:str=None,
+                 sam_kwargs:dict={
                      "points_per_side":64
                  }):
+        '''
+        Create a Segmenter class which uses a SegmentAnything model from Meta
+
+        Args:
+            image (np.ndarray) : Image to be segmented
+            device (str) : specify if using cuda or cpu
+            sam_kwargs (dict) : Kwargs for segment_anything.SamAutomaticMaskGenerator 
+                            of segment anything
+        '''
         import torch 
         super().__init__(image)
         self.sam_kwargs = sam_kwargs
@@ -286,6 +320,7 @@ class SAMSegmenter(AbstractSegmenter):
             mask_generator = SamAutomaticMaskGenerator(sam, **self.sam_kwargs)
             self._mask_generator = mask_generator
         return self._mask_generator
+    
     @property
     def thresh(self):
         if self._thresh is None:
@@ -321,18 +356,18 @@ class ImageSegmenter:
 
     def __init__(
         self,
-        input_path=None,
-        pixels_to_um=9.37,
-        top_boundary=0,
-        bottom_boundary=860,
-        left_boundary=0,
-        right_boundary=2560,
-        result_folder_path="Results",
-        override_exists=False,
-        file_str=None,
+        input_path:str|np.ndarray=None,
+        pixels_to_um:float=9.37,
+        top_boundary:int=0,
+        bottom_boundary:int=860,
+        left_boundary:int=0,
+        right_boundary:int=2560,
+        result_folder_path:str="Results",
+        override_exists:bool=False,
+        file_str:str=None,
         segmenter:str="algorithmic",
         segmenter_kwargs:dict={},
-        region_featurizers=[
+        region_featurizers:list=[
             feat.AverageCurvatureFeaturizer(),
             feat.StdCurvatureFeaturizer(),
             feat.MinCurvatureFeaturizer(),
@@ -343,7 +378,7 @@ class ImageSegmenter:
             feat.DistinctPathsCurvatureFeaturizer(),
         ],
     ):
-        """
+        '''
         Main class for handling segmentation pipeline.
 
         Args:
@@ -355,7 +390,7 @@ class ImageSegmenter:
             right_boundary (int)   : Pixel boundary for cropping image
             result_folder_path (string) : Path to the folder .csv should be saved.
             override_exists (bool) : If .csv already exists, DO NOT overwrite it if this variable is False. Allows classification across sessions
-        """
+        '''
         # Given variables (besides input path, handle that at very end)
         self._input_path = input_path
         self.pixels_to_um = pixels_to_um
@@ -419,6 +454,9 @@ class ImageSegmenter:
         self.input_path = self._input_path
 
     def reset(self):
+        '''
+        Set the class to have no processed images or data
+        '''
         self._df = None
         self._image_read = None
         self._image_cropped = None
@@ -501,7 +539,7 @@ class ImageSegmenter:
     def markers_filled(self):
         return self.segmenter.markers_filled
 
-    def process_images(self, blur=False, edge_modification=False, use_bilateral=False):
+    def process_images(self):
         """
         Create each of the images of interest.
         Performs segmentation as part of the process
@@ -906,30 +944,7 @@ class ImageSegmenter:
 
 
 class BatchImageSegmenter:
-    '''
-        self,
-        input_path=None,
-        pixels_to_um=9.37,
-        top_boundary=0,
-        bottom_boundary=860,
-        left_boundary=0,
-        right_boundary=2560,
-        result_folder_path="Results",
-        override_exists=False,
-        file_str=None,
-        segmenter:str="algorithmic",
-        segmenter_kwargs:dict={},
-        region_featurizers=[
-            feat.AverageCurvatureFeaturizer(),
-            feat.StdCurvatureFeaturizer(),
-            feat.MinCurvatureFeaturizer(),
-            feat.MaxCurvatureFeaturizer(),
-            feat.PercentConvexityCurvatureFeaturizer(),
-            feat.LongestContiguousConcavityCurvatureFeaturizer(),
-            feat.LongestContiguousConvexityCurvatureFeaturizer(),
-            feat.DistinctPathsCurvatureFeaturizer(),
-        ],
-    '''
+
     def __init__(
         self,
         img_list=None,

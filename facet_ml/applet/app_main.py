@@ -401,6 +401,14 @@ class Ui(QtWidgets.QDialog):
             return False # lets the event continue to the edit
         return False
 
-app = QtWidgets.QApplication(sys.argv)
-window = Ui()
-app.exec_()
+
+def run_app():
+    '''
+    Function to run applet
+    '''
+    app = QtWidgets.QApplication(sys.argv)
+    window = Ui()
+    app.exec_()
+
+if __name__ == "__main__":
+    run_app()
