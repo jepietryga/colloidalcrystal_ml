@@ -20,7 +20,7 @@ segment_mode_mapper = {
                                   "segmenter_kwargs":{"threshold_mode":"otsu"},
                                 },
     "Local Threshold":{"segmenter":AlgorithmicSegmenter,
-                                  "segmenter_kwargs":{"threshold_mode":"localthresh"},
+                                  "segmenter_kwargs":{"threshold_mode":"local"},
                                 },
     "Pixel Classifier":{"segmenter":AlgorithmicSegmenter,
                                   "segmenter_kwargs":{"threshold_mode":"pixel"},
@@ -32,7 +32,9 @@ segment_mode_mapper = {
                                   "segmenter_kwargs":{},
                                 },
     "Segment Anything":{"segmenter":SAMSegmenter,
-                                  "segmenter_kwargs":{"points_per_side":64},
+                                  "segmenter_kwargs":{
+                                      "sam_kwargs":{"points_per_side":64},
+                                  },
                                 },
 }
 
@@ -295,13 +297,11 @@ class Ui(QtWidgets.QDialog):
         self.pbar.setRange(0,len(self.files_list))
         self.pbar.show()
         self.show()
-        print("PROGRESS WINDOW OPEN")
         for ii,IS in enumerate(self.batch_image_segmenter._IS_list):
             self.pbar.setValue(ii)
             print(ii)
             QtWidgets.QApplication.processEvents() 
             IS.process_images()
-        print("PROGRESS WINDOW CLOSE")
         self.pbar.hide()
         self.pbar.close()
 
