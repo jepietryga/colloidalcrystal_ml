@@ -34,4 +34,7 @@ ProcessedData/2023_*
 *.DS_Store*
 
 # 
-Training/2024_02_15_Jacob-P_Training/4 nM 4.h5.zip
+ProcessedData/Training_Data_20240216/4 nM 4.h5.zip
+Testing/test.h5
+Testing/test.h5
+Testing/test.h5
