@@ -66,7 +66,6 @@ class AbstractSegmenter(ABC):
         self._markers = None  # Seeds for regions
         self._markers_filled = None  # The actual regions of interest
 
-        raise NotImplemented
 
     @property
     def image(self):
@@ -476,6 +475,7 @@ class ImageSegmenter:
         self._image_working = None
         self._image_labeled = None
         self._thresh = None
+        self._segmenter.image = self.image_cropped
 
     @property
     def input_path(self):

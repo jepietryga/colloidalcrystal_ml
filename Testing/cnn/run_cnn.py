@@ -1,20 +1,93 @@
-from facet_ml.classification.mask_rcnn import *
+from facet_ml.classification.cnn import *
 
 
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torch import nn
+from tempfile import TemporaryDirectory 
+
+def train_model(model, criterion, optimizer, scheduler, num_epochs,
+    dataloaders:dict,dataset_sizes:dict
+    ):
+    since = time.time()
+
+    # Create a temporary directory to save training checkpoints
+    with TemporaryDirectory() as tempdir:
+        best_model_params_path = os.path.join(tempdir, 'best_model_params.pt')
+
+        torch.save(model.state_dict(), best_model_params_path)
+        best_acc = 0.0
+
+        for epoch in range(num_epochs):
+            print(f'Epoch {epoch}/{num_epochs - 1}')
+            print('-' * 10)
+
+            # Each epoch has a training and validation phase
+            for phase in ['train', 'val']:
+                if phase == 'train':
+                    model.train()  # Set model to training mode
+                else:
+                    model.eval()   # Set model to evaluate mode
+
+                running_loss = 0.0
+                running_corrects = 0
+
+                # Iterate over data.
+                for inputs, labels in dataloaders[phase]:
+                    # inputs = torch.tensor(inputs)
+                    # labels = torch.tensor(labels)
+                    inputs = inputs.to(device)
+                    labels = labels.to(device)
+
+                    # zero the parameter gradients
+                    optimizer.zero_grad()
+
+                    # forward
+                    # track history if only in train
+                    with torch.set_grad_enabled(phase == 'train'):
+                        outputs = model(inputs)
+                        _, preds = torch.max(outputs, 1)
+                        loss = criterion(outputs, labels)
+
+                        # backward + optimize only if in training phase
+                        if phase == 'train':
+                            loss.backward()
+                            optimizer.step()
+
+                    # statistics
+                    running_loss += loss.item() * inputs.size(0)
+                    my_sum = torch.sum(preds == labels.data)
+                    running_corrects += torch.sum(preds == labels.data)
+                if phase == 'train':
+                    scheduler.step()
+
+                epoch_loss = running_loss / dataset_sizes[phase]
+                epoch_acc = running_corrects.double() / dataset_sizes[phase]
+
+                print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}, ({running_corrects}/{dataset_sizes[phase]})')
+
+                # deep copy the model
+                if phase == 'val' and epoch_acc > best_acc:
+                    best_acc = epoch_acc
+                    torch.save(model.state_dict(), best_model_params_path)
+
+            print()
+
+        time_elapsed = time.time() - since
+        print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
+        print(f'Best val Acc: {best_acc:4f}')
+
+        # load best model weights
+        model.load_state_dict(torch.load(best_model_params_path))
+    return model
 
 # load a model pre-trained on COCO
 if __name__ == "__main__":
-    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights="DEFAULT")
-
+    model = torchvision.models.resnet50(weights="DEFAULT")
+    
     # replace the classifier with a new one, that has
     # num_classes which is user-defined
     num_classes = 5
-    # get number of input features for the classifier
-    in_features = model.roi_heads.box_predictor.cls_score.in_features
-    # replace the pre-trained head with a new one
-    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
 
     import torchvision
     from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
@@ -24,30 +97,27 @@ if __name__ == "__main__":
 
     def get_model_instance_segmentation(num_classes):
         # load an instance segmentation model pre-trained on COCO
-        model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
+        model = torchvision.models.resnet50(weights="DEFAULT")
 
-        # get number of input features for the classifier
-        in_features = model.roi_heads.box_predictor.cls_score.in_features
-        # replace the pre-trained head with a new one
-        model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-
-        # now get the number of input features for the mask classifier
-        in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-        hidden_layer = 256
-        # and replace the mask predictor with a new one
-        model.roi_heads.mask_predictor = MaskRCNNPredictor(
-            in_features_mask, hidden_layer, num_classes
-        )
+        n_features = model.fc.in_features
+        
+        model.fc = nn.Linear(n_features, num_classes)
 
         return model
 
     from torchvision.transforms import v2 as T
     import utils
 
+    im_size = 256
     def get_transform(train):
-        transforms = []
+        transforms = [
+            T.ToTensor(),
+            T.Lambda(lambda x: x.repeat(3,1,1)),
+            T.Resize((im_size,im_size))
+        ]
         if train:
             transforms.append(T.RandomHorizontalFlip(0.5))
+            transforms.append(T.RandomVerticalFlip(0.5))
         transforms.append(T.ToDtype(torch.float, scale=True))
         transforms.append(T.ToPureTensor())
         return T.Compose(transforms)
@@ -68,6 +138,7 @@ if __name__ == "__main__":
     h5_path = "/Users/jacobpietryga/Desktop/Academics/colloidal_crystal_ML/Training/2024_02_15_Jacob-P_Training/4 nM 1.h5"
 
     loaded_df = pd.read_csv(
+            csv_path
           )
     import glob
 
@@ -80,23 +151,36 @@ if __name__ == "__main__":
     )
 
     # split the dataset in train and test set
+    print(len(dataset))
+    print(np.shape(dataset[0][0]))
     indices = torch.randperm(len(dataset)).tolist()
     print(np.shape(indices))
-    dataset = torch.utils.data.Subset(dataset, indices[:-3])
-    dataset_test = torch.utils.data.Subset(dataset_test, indices[-3:])
-
+    index_cut = int(len(indices)*.7)
+    print(len(dataset))
+    dataset = torch.utils.data.Subset(dataset, indices[:index_cut])
+    dataset_test = torch.utils.data.Subset(dataset_test, indices[index_cut:])
+    print(len(dataset),len(dataset_test))
+    dataset_sizes = {
+        "train":len(dataset),
+        "val":len(dataset_test)
+    }
     # define training and validation data loaders
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=2, shuffle=True, num_workers=0, collate_fn=utils.collate_fn
+        dataset, batch_size=15, shuffle=True, num_workers=0, 
+        # collate_fn=utils.collate_fn
     )
 
     data_loader_test = torch.utils.data.DataLoader(
         dataset_test,
-        batch_size=1,
+        batch_size=15,
         shuffle=False,
         num_workers=0,
-        collate_fn=utils.collate_fn,
+        # collate_fn=utils.collate_fn,
     )
+    dataloaders = {
+        "train":data_loader,
+        "val":data_loader_test
+    }
 
     # get the model using our helper function
     print(num_classes)
@@ -117,13 +201,16 @@ if __name__ == "__main__":
 
     from engine import *
 
-    for epoch in range(num_epochs):
-        # train for one epoch, printing every 10 iterations
-        train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
-        # update the learning rate
-        lr_scheduler.step()
-        # evaluate on the test dataset
-        evaluate(model, data_loader_test, device=device)
+    train_model(model, criterion=nn.CrossEntropyLoss(),
+        optimizer=optimizer,scheduler=lr_scheduler,num_epochs=25,
+        dataloaders=dataloaders, dataset_sizes=dataset_sizes)
+    # for epoch in range(num_epochs):
+    #     # train for one epoch, printing every 10 iterations
+    #     train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+    #     # update the learning rate
+    #     lr_scheduler.step()
+    #     # evaluate on the test dataset
+    #     evaluate(model, data_loader_test, device=device)
 
     print("That's it!")
 
