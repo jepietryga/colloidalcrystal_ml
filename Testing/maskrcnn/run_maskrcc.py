@@ -58,12 +58,19 @@ if __name__ == "__main__":
     # our dataset has two classes only - background and person
     num_classes = 5
     # use our dataset and defined transformations
+
+    ## WINDOWS
+    csv_path = r"C:\Users\Jacob\Desktop\Academics\Mirkin\colloidal_crystal_ML\ProcessedData\Training_Data_20240216\2024_02_27_Rachel-C_Processed.csv"
+    h5_path = r"C:\Users\Jacob\Desktop\Academics\Mirkin\colloidal_crystal_ML\ProcessedData\Training_Data_20240216\2024_02_16_Rachel-C_Training.h5"
+
+    ## MAC
+    csv_path =  "/Users/jacobpietryga/Desktop/Academics/colloidal_crystal_ML/ProcessedData/Training_Data_20240216/2024_02_27_Rachel-C_Processed.csv"
+    h5_path = "/Users/jacobpietryga/Desktop/Academics/colloidal_crystal_ML/Training/2024_02_15_Jacob-P_Training/4 nM 1.h5"
+
     loaded_df = pd.read_csv(
-        r"C:\Users\Jacob\Desktop\Academics\Mirkin\colloidal_crystal_ML\ProcessedData\Training_Data_20240216\2024_02_27_Rachel-C_Processed.csv"
-    )
+          )
     import glob
 
-    h5_path = r"C:\Users\Jacob\Desktop\Academics\Mirkin\colloidal_crystal_ML\ProcessedData\Training_Data_20240216\2024_02_16_Rachel-C_Training.h5"
     loaded_h5s = [h5py.File(h5_path, "r")]
     dataset = ColloidalDataset(
         loaded_df, h5_total=loaded_h5s, transforms=get_transform(train=True)
@@ -106,7 +113,7 @@ if __name__ == "__main__":
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
     # let's train it just for 2 epochs
-    num_epochs = 60
+    num_epochs = 5
 
     from engine import *
 
@@ -124,7 +131,9 @@ if __name__ == "__main__":
 
     from torchvision.utils import draw_bounding_boxes, draw_segmentation_masks
 
+    # WINDOWS
     img_path = r"C:\Users\Jacob\Desktop\Academics\Mirkin\colloidal_crystal_ML\Images\Training\39.5 hold 4.bmp"
+    img_path = "/Users/jacobpietryga/Desktop/Academics/colloidal_crystal_ML/Images/Diagnostic_Images/Model_check-diagnostic_images_best/L-2_nM-3_au10_mixing-T_oven-T_embed-SiO2_07.tif"
     import cv2
 
     image = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)

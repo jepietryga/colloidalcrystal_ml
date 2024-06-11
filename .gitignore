@@ -5,8 +5,10 @@ Images/Additional/Images to rachel (from Yuanwei)/*/
 # Ignore ALL Results
 Results
 
-# Ignore ALL Images... Just download these manually for reals
+# Ignore ALL Images... Just download these manually for use
 Images
+Image_Data_Repository
+
 
 # Larger Models
 facet_ml/static/Models/bg_segmenter.pickle

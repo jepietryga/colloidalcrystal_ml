@@ -75,7 +75,7 @@ model_CvI_path = os.path.join(model_folder, "RF_C-MC_I.sav")
 model_CvMC = get_model_from_path(model_CvMC_path)
 model_CvI = get_model_from_path(model_CvI_path)
 
-### MAIN BODY OF CODE ###
+###### MAIN BODY OF CODE #######
 
 
 for parent_image_dir in parent_image_dir_list:
