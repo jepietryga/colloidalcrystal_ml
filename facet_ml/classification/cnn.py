@@ -20,11 +20,12 @@ from torchvision.transforms import v2 as T
 import torchvision
 from torch import nn
 
+from facet_ml.segmentation.segmenter import ImageSegmenter
+
 LABEL_TO_INT = {"B": 0, "C": 1, "MC": 2, "I": 3, "PS": 4, "V": 1, "PC": 4}
 INT_TO_LABEL = {0: "B", 1: "C", 2: "MC", 3: "I", 4: "PS"}
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
 
 def get_model(num_classes, model_choice=torchvision.models.resnet50(weights="DEFAULT")):
     """
@@ -42,7 +43,6 @@ def get_model(num_classes, model_choice=torchvision.models.resnet50(weights="DEF
 
 def repeat_channels(x):
     return x.repeat(3, 1, 1)
-
 
 class get_transform:
 
@@ -70,7 +70,6 @@ class get_transform:
 
     def __call__(self):
         return T.Compose(self.transforms)
-
 
 # def get_transform(train, im_size=256):
 #     transforms = [
@@ -320,7 +319,7 @@ def train_model(
     dataset_sizes: dict,
 ):
     """
-    Train num_epochs for the model
+    Train num_epochs
     """
     since = time.time()
 
@@ -402,15 +401,38 @@ def train_model(
         model.load_state_dict(torch.load(best_model_params_path))
     return model, loss_dict, accuracy_dict
 
+def load_model(model_config_pth,
+    model_class):
+    '''
+    Given a model path, load it in
+    '''
+    model = model_class()
+    model.load_state_dict(torch.load(model_config_pth))
+    model.eval()
 
+    return model
+
+
+#
+# Update this datset to be bale to made from
+# (csv + h5) OR ImageSegmenter
+#
 class ColloidalDataset(Dataset):
 
-    def __init__(self, df_total, h5_total: list, transforms=None):
+    def __init__(self, 
+        df_total, 
+        h5_total: list = None,
+        image_segmenter:ImageSegmenter = None,
+        mode:str="h5", 
+        transforms=None):
         """
         Given the dataframe of each file,
         associate the data rows to their binary masks in the h5s.
         """
+        if (h5_total is None) and (image_segmenter is None):
+            raise Exception("Need at least one source of image data")
         self.transforms = transforms
+        self.mode = mode
 
         # Load the row dataframe, organize it by filename
         self.df: pd.DataFrame = df_total
@@ -419,28 +441,24 @@ class ColloidalDataset(Dataset):
         self.filenames = [Path(fn).stem for fn in self.df.Filename.unique()]
         self.n_images = len(self.df)
 
+
+        ## If h5 mode, use these variables
         # Load the h5s, then load the masks associated
         if not isinstance(h5_total, list):
             h5_files = [h5_total]
         else:
             h5_files = h5_total
 
-        self.h5_files = h5_files
+        self._h5_files = h5_files
 
-    def __getitem__(self, idx):
+        ## If ImageSegmenter Mode, use these variables
+        self._image_segmenter = image_segmenter
 
-        # Get Row of data
-        row = self.df.iloc[idx]
-
-        # For row of the data get its label, file name, and region
-        label = row.Labels
-        filename = str(Path(row.Filename).stem)
-        region = row.Region
-
+    def _get_h5_img(self,label,filename,region):
         # From the h5s, grab the h5 associated with the image name
         h5_name = filename
         h5_file = None
-        for h5 in self.h5_files:
+        for h5 in self._h5_files:
             data = h5py.File(h5, "r")
 
             if h5_name in data.keys():
@@ -459,6 +477,23 @@ class ColloidalDataset(Dataset):
 
         # Apply bounding
         img = crop_to_nonzero(img)
+        return img
+
+    def __getitem__(self, idx):
+
+        # Get Row of data
+        row = self.df.iloc[idx]
+
+        # For row of the data get its label, file name, and region
+        label = row.Labels
+        filename = str(Path(row.Filename).stem)
+        region = row.Region
+
+        if self.mode == "h5":
+            img = self._get_h5_img(label,filename,region)
+        elif self.mode == "ImageSegmenter":
+            img_oi = self._image_segmenter.image_cropped
+            img = self._image_segmenter._grab_region(img_oi,region,0,5)
 
         # target = temp_df.to_dict()
 
@@ -474,3 +509,24 @@ class ColloidalDataset(Dataset):
 
     def __len__(self):
         return self.n_images
+
+    @classmethod
+    def from_h5(cls,
+            csv_path,
+            h5_path,
+            transforms=None
+                ):
+        df = pd.read_csv(csv_path)
+        h5_path = h5_path
+        return cls(df,h5,None,"h5")
+        
+        raise NotImplemented
+
+    @classmethod
+    def from_image_segmenter(cls,
+        image_segmenter:ImageSegmenter,
+        ):
+        df = image_segmenter.df
+
+        return cls(df,None,image_segmenter,mode="ImageSegmenter")
+        raise NotImplemented
