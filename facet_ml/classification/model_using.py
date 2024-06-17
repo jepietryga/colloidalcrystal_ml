@@ -85,9 +85,9 @@ def visualize_labels(
     df: pd.DataFrame,
     color_dict: dict = {
         "Crystal": np.array([0, 0, 255]),
-        "Multiple Crystal": np.array([255, 255, 0]),
+        "Multiple Crystal": np.array([0, 255, 0]),
         "Incomplete": np.array([255, 0, 0]),
-        "Poorly Segmented": np.array([0, 255, 0]),
+        "Poorly Segmented": np.array([0, 255, 255]),
     },
     default_color: np.ndarray = np.array([255, 0, 255]),
 ):
@@ -103,7 +103,7 @@ def visualize_labels(
         id_label = row["Labels"]
         color = color_dict.get(id_label, np.array([255, 0, 255]))
         mask_logical = region_arr[ii] > 0
-        edge_logical = dilate_logical(mask_logical, 3)
+        edge_logical = dilate_logical(mask_logical, 2)
         mask_image[edge_logical] = np.array([255, 255, 255])
         mask_image[mask_logical] = color
         ii += 1

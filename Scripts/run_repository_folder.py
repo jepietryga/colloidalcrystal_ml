@@ -17,9 +17,9 @@ from pathlib import Path
 import json
 
 ## Define Image Segmenter run conditions ##
-threshold_mode = "algorithmic"
+threshold_mode = "segment_anything"
 segmenter_kwargs = {
-    "edge_modification":"localthresh"
+    # "edge_modification":"localthresh"
 }
 IS = ImageSegmenter(
     input_path=None,
@@ -32,12 +32,12 @@ IMAGE_FOLDER = Path(__file__).parent.parent / "Image_Data_Repository"
 
 ## Folders to Run ##
 # Grab based on keyword check
-keyword_oi = "2024_06_05_experiments"
+keyword_oi = "sintered"
 with open(IMAGE_FOLDER / "folder_information.json", "r") as f:
     folder_info = json.load(f)
 
 folders_to_run = [key for key,items in folder_info.items() 
-                    if keyword_oi in items["organizing_folders"]
+                    if keyword_oi in items["additional_labels"]
                 ]
 folder_paths = [str(IMAGE_FOLDER / f) for f in folders_to_run]
 
