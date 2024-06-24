@@ -85,7 +85,7 @@ def visualize_labels(
     df: pd.DataFrame,
     color_dict: dict = {
         "Crystal": np.array([0, 0, 255]),
-        "Multiple Crystal": np.array([0, 255, 0]),
+        "Multiple Crystal": np.array([0, 100, 0]),
         "Incomplete": np.array([255, 0, 0]),
         "Poorly Segmented": np.array([0, 255, 255]),
     },

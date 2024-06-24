@@ -24,6 +24,7 @@ from pathlib import Path
 
 threshold_mode = "algorithmic"
 segmenter_kwargs = {
+    "threshold_mode":"ensemble",
     "edge_modification":"localthresh"
 }
 IS = ImageSegmenter(
@@ -52,17 +53,18 @@ results_path = f"../Results/2024_02_Figure4_rate_images_{threshold_mode}"
 
 ## Target folders
 parent_image_dir_list = []
-# parent_image_dir_list.append(Path(__file__).parent.parent / "Images" / "20240217_Images_by_experiment" / "Fig3_Fig4_oven_pcr_linkerstrength")
-# parent_image_dir_list.append(Path(__file__).parent.parent / "Images" / "20240217_Images_by_experiment" / "Fig4_slow_cooling_rates")
 parent_image_dir_list.append(Path(__file__).parent.parent / "Images" / "Fig_3_PAE_diffusion")
 
 ## Load Features
 features = load_feature_config("default_features-agnostic")
-features = load_feature_config("2024_features-agnostic")
+# features = load_feature_config("default_features")
+# features = load_feature_config("2024_features-agnostic")
 
 ## Load Models
 model_set = "2024_02__original_default_features-agnostic"
-model_set = "2024_02__original_2024_features-agnostic"
+# model_set = "2024_02__original_default_features"
+model_set = "2023_original_default_features-agnostic" # Best sent RC's way
+# model_set = "2024_02__original_2024_features-agnostic"
 model_folder = os.path.join(Path(__file__).parent.parent,"facet_ml","static","Models",model_set)
 model_CvMC_path = os.path.join(model_folder,"RF_C_MC.sav")
 model_CvI_path = os.path.join(model_folder,"RF_C-MC_I.sav")

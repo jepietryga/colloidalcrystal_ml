@@ -17,9 +17,10 @@ from pathlib import Path
 import json
 
 ## Define Image Segmenter run conditions ##
-threshold_mode = "segment_anything"
+threshold_mode = "algorithmic"
 segmenter_kwargs = {
-    # "edge_modification":"localthresh"
+    "threshold_mode" : "ensemble",
+    "edge_modification":"localthresh"
 }
 IS = ImageSegmenter(
     input_path=None,

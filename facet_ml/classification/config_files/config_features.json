@@ -16,6 +16,24 @@
         "moments_hu-3",
         "moments_hu-5"
     ],
+    "default_features-eccentricity":[
+        "area",
+        "major_axis_length",
+        "minor_axis_length",
+        "perimeter",
+        "max_intensity",
+        "solidity",
+        "major_axis_length/minor_axis_length",
+        "perimeter/major_axis_length",
+        "perimeter/minor_axis_length",
+        "feret_diameter_max",
+        "moments_hu-0",
+        "moments_hu-1",
+        "moments_hu-2",
+        "moments_hu-3",
+        "moments_hu-5",
+        "eccentricity"
+    ],
     "default_features":[
         "area",
         "major_axis_length",
