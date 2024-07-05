@@ -1,0 +1,51 @@
+#input_image_div {
+    justify-content: center;
+    margin:auto;
+    display: flex;
+     width: 40vw;
+     /* padding-top: 50% */
+    height: 40vw;
+    background-color: white;
+    border: 1px solid #000; /* Optional: to make the square more visible */
+}
+
+/* #threshold_image_div { */
+.segment_tab_image {
+    justify-content: center;
+    margin:auto;
+    /* display: flex; */
+    width: 25vw;
+    height: 25vw;
+    background-color: white;
+    border: 1px solid #000; /* Optional: to make the square more visible */
+}
+
+#labeling_image_div {
+    justify-content: center;
+    margin:auto;
+    display: flex;
+     width: 35vw;
+     /* padding-top: 50% */
+    height: 35vw;
+    background-color: white;
+    border: 1px solid #000; /* Optional: to make the square more visible */
+
+}
+
+#tab_content_div {
+    width: 60vw;
+    height: auto;
+}
+
+#input_content_div {
+    width: 40vw;
+    height: auto;
+}
+
+body, html {
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
