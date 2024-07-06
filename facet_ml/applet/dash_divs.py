@@ -296,10 +296,12 @@ def get_tab_div() -> html.Div:
 
     ## Create invisible 'memo' divs for holding 'children' 
     tab_segment_memo = html.Div(id="tab_segment_memo",
-        style={"display":"none"}
+        style={"display":"none"},
+        children=get_segment_tab()
     )
     tab_label_memo = html.Div(id="tab_label_memo",
-        style={"display":"none"}
+        style={"display":"none"},
+        children=get_label_tab()
     )
 
     tab_div = dbc.Col([

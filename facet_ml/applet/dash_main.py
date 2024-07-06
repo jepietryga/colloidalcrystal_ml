@@ -92,22 +92,26 @@ class AppState():
 ## Callbacks limited for Navigation and Loading ##
 
 @callback(
-    Output("tab_content_div","children"),
+    # Output("tab_content_div","children"),
+    Output("tab_segment_memo","style"),
+    Output("tab_label_memo","style"),
     Input("tabs_div","active_tab"),
-    State("tab_content_div","children"),
+    # State("tab_segment_memo","children"),
+    # State("tab_label_memo","children"),
 )
-def switch_tabs(tab_oi,active_content) -> html.Div:
+def switch_tabs(tab_oi,) -> html.Div:
     # Edge Case: Initiailization
-    if active_content is None:
-        return state.tabs[state.active_tab]
-
-    state.tabs[state.active_tab] = active_content
+    # if active_content is None:
+    #     return state.tabs[state.active_tab]
+    # print(tsmc)
     if tab_oi == "segment_tab":
-        state.active_tab = "segment"
-        return state.tabs["segment"]
+        # state.active_tab = "segment"
+        # return state.tabs["segment"]
+        return {"display":"block"},{"display":"none"}
     if tab_oi == "label_tab":
-        state.active_tab = "label"
-        return state.tabs["label"]
+        # state.active_tab = "label"
+        # return state.tabs["label"]
+        return {"display":"none"},{"display":"block"}
 
 
 ## Wire functionality ##
