@@ -14,7 +14,10 @@ def np_to_base64(img:np.array):
     pil.save(buffer, format="PNG")
 
     val = buffer.getvalue()
-    return base64.b64encode(val_.decode('utf-8'))
+    val_b64 = base64.b64encode(val).decode('utf-8')
+
+    str_b64 = f"data:image/png;base64,{val_b64}"
+    return str_b64
 
 def upload_content_to_np(content):
     '''

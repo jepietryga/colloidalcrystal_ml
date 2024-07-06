@@ -3,6 +3,8 @@ from dash import Dash, dash_table, dcc, html, callback, ctx
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 from PIL import Image
+from io import BytesIO
+import h5py
 
 import numpy as np
 
@@ -76,9 +78,37 @@ class AppState():
         self.left_boundary = None
         self.pixels_to_um = None
 
+        # Initialize Tabs information
+        self.tabs = {}
+
+        self.tabs["segment"] = dash_divs.get_segment_tab()
+        self.tabs["label"] = dash_divs.get_label_tab()
+        self.active_tab = "segment"
+
     @property
     def image_segmenter(self):
         return self.batch_image_segmenter[self.batch_tracker]
+
+## Callbacks limited for Navigation and Loading ##
+
+@callback(
+    Output("tab_content_div","children"),
+    Input("tabs_div","active_tab"),
+    State("tab_content_div","children"),
+)
+def switch_tabs(tab_oi,active_content) -> html.Div:
+    # Edge Case: Initiailization
+    if active_content is None:
+        return state.tabs[state.active_tab]
+
+    state.tabs[state.active_tab] = active_content
+    if tab_oi == "segment_tab":
+        state.active_tab = "segment"
+        return state.tabs["segment"]
+    if tab_oi == "label_tab":
+        state.active_tab = "label"
+        return state.tabs["label"]
+
 
 ## Wire functionality ##
 
@@ -108,7 +138,7 @@ segmentation_inputs_state = {
         list_contents=Input("load_button","contents")
     ),
     state=dict(
-        list_filenames=State("load_button","filenames")
+        list_filenames=State("load_button","filename")
     ),
     prevent_initial_call=True
 )
@@ -126,10 +156,9 @@ def get_input_file(list_contents,list_filenames):
     state.images = [dash_helper.upload_content_to_np((content)) 
         for content in list_contents
     ]
-    
     state.filenames = list_filenames
 
-    return [html.Img(src=list_contents[0])]
+    return [html.Img(src=list_contents[0],className="processed_image")]
     # raise NotImplemented
 
 @callback(
@@ -141,7 +170,7 @@ def get_input_file(list_contents,list_filenames):
         run_click=Input("run_button","n_clicks"),
     ),
     state=image_inputs_state | segmentation_inputs_state,
-    prevent_initial_update=True,
+    prevent_initial_call=True,
     suppress_callback_exceptions=True
 )
 def perform_segmentation(
@@ -153,7 +182,7 @@ def perform_segmentation(
     # Edge Case: Do not run if no images
     if len(state.images) == 0:
         print("No images")
-        return ([html.Div()],[html.Div()])
+        return ([html.Div(className="blank_image")],[html.Div("blank_image")])
     # Segment Mode mapper
     segmenter_instructions = segment_mode_mapper[segmentation_mode]
     edge_arg = edge_mode_mapper[edge_detection_mode]
@@ -161,18 +190,20 @@ def perform_segmentation(
         segmenter_instructions["segmenter_kwargs"]["edge_modification"] = edge_arg 
 
     # Initialize batch segmenter and control state
+    print(state.images,len(state.images))
     state.batch_image_segmenter = BatchImageSegmenter(
         img_list=state.images,
-        top_boundary=top_bound or 0,
-        bottom_boundary=bottom_bound or 860,
-        left_boundary=left_bound or 0,
-        right_boundary=right_bound or 2560,
-        pixels_to_um=px_to_um or 9.37,
+        filename_list=state.filenames,
+        top_boundary=int(top_bound) if top_bound else 0,
+        bottom_boundary=int(bottom_bound)  if bottom_bound else 860,
+        left_boundary=int(left_bound) if left_bound else 0,
+        right_boundary=int(right_bound) if right_bound else 2560,
+        pixels_to_um=float(px_to_um) if px_to_um else 9.37,
         segmenter=segmenter_instructions["segmenter"],
         segmenter_kwargs=segmenter_instructions["segmenter_kwargs"],
     )
     state.batch_tracker=0
-    print("EBatch created")
+    print("Batch created")
 
     # Run the segmentation
     state.batch_image_segmenter.df
@@ -180,25 +211,69 @@ def perform_segmentation(
     # Return modifications to the visualized images
     thresh_b64 = dash_helper.np_to_base64(state.image_segmenter.thresh)
     markers_b64 = dash_helper.np_to_base64(state.image_segmenter.markers_filled)
-    
     print("End of perform_segmentation")
-    return ([html.Img(thresh_b64)], [html.Img(markers_b64)])
+    thresh_div = [html.Img(src=thresh_b64,className="processed_image")]
+    markers_div = [html.Img(src=markers_b64,className="processed_image")]
+    return (thresh_div, markers_div)
 
-def save_segmentation():
-    raise NotImplemented
-
-def input_right():
-    raise NotImplemented
-
-def input_right():
-    raise NotImplemented
-
-def update_image_reading():
+@callback(
+    output=Output("save_h5_download","data"),
+    inputs=Input("save_h5_button","n_clicks"),
+    prevent_initial_call=True,
+)
+def save_segmentation(n_clicks):
     '''
-    Impact how the image will be read in by the applet,
-    adjust visualization of leftmost image
+    Create, send, and locally delete the h5 file.
     '''
-    raise NotImplemented
+    buffer = BytesIO()
+    f = h5py.File(buffer,"w")
+    f.close()
+    for IS in state.batch_image_segmenter.IS_list:
+        IS.to_h5(buffer,"r+")
+    
+    buffer.seek(0)
+    return dcc.send_bytes(buffer.getvalue(), "segmented.h5")
+
+@callback(
+    output=[Output("input_image_div","children", allow_duplicate=True),
+            Output("threshold_image_div","children", allow_duplicate=True),
+            Output("markers_image_div","children", allow_duplicate=True)
+        ],
+    inputs=[
+        Input("input_left_arrow","n_clicks"),
+        Input("input_right_arrow","n_clicks")
+        ],
+    state=[State("input_image_div","children"),
+            State("threshold_image_div","children"),
+            State("markers_image_div","children")
+        ],
+    prevent_initial_call=True
+)
+def input_arrows(left_clicks,right_clicks,iid,tid,mid,):
+    '''
+    Shift displayed image right or left
+    '''
+    print("INPUT ARROW")
+    if len(state.images) == 0:
+        return [iid,tid,mid]
+
+
+    triggered_id = ctx.triggered_id
+    if triggered_id == "input_right_arrow":
+        state.batch_tracker += 1
+    elif triggered_id == "input_left_arrow":
+        state.batch_tracker -= 1
+    state.batch_tracker = state.batch_tracker % len(state.images)
+
+    # Make new image
+    input_b64 = dash_helper.np_to_base64(state.image_segmenter.image_read)
+    thresh_b64 = dash_helper.np_to_base64(state.image_segmenter.thresh)
+    markers_b64 = dash_helper.np_to_base64(state.image_segmenter.markers)
+    return [
+        [html.Img(src=input_b64,className="processed_image")],
+        [html.Img(src=thresh_b64,className="processed_image")],
+        [html.Img(src=markers_b64,className="processed_image")]
+    ]
 
 def forward_label_click():
     raise NotImplemented

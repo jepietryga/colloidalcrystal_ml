@@ -74,9 +74,9 @@ def get_image_load_div() -> html.Div:
 
     ## Left and Right buttons w/ Progress Bar
     navigation_progress = dbc.Row(children=[
-        dbc.Col(html.Button("<",id="left_arrow",)),
+        dbc.Col(html.Button("<",id="input_left_arrow",)),
         dbc.Col(dbc.Progress(id="progress_bar")),
-        dbc.Col(html.Button(">",id="right_arrow",))
+        dbc.Col(html.Button(">",id="input_right_arrow",))
     ])
 
     ## Load Button
@@ -194,10 +194,13 @@ def get_segment_tab() -> html.Div:
         ),
     )
     save_h5_button = html.Div(
-        children=html.Button(
-            'Save .h5...',
-            id="save_h5_button",
-        )
+        children=[
+            html.Button(
+                'Save .h5...',
+                id="save_h5_button",
+            ),
+            dcc.Download(id="save_h5_download")
+        ]
     )
 
     segment_button_row = dbc.Row(
@@ -263,8 +266,13 @@ def get_label_tab() -> html.Div:
 
     ## Save Button
     save_csv_button = html.Div(
-        id="save_csv_button",
-        children=html.Button('Save Labeled .csv')
+        children=[
+            html.Button(
+                'Save Labeled .csv',
+                id="save_csv_button"
+            ),
+            dcc.Download(id="save_csv_download")
+        ]
     )
 
     ## Combine all divs
@@ -286,9 +294,19 @@ def get_tab_div() -> html.Div:
     active_tab="segment_tab")
     tab_content_div = html.Div(id="tab_content_div")
 
+    ## Create invisible 'memo' divs for holding 'children' 
+    tab_segment_memo = html.Div(id="tab_segment_memo",
+        style={"display":"none"}
+    )
+    tab_label_memo = html.Div(id="tab_label_memo",
+        style={"display":"none"}
+    )
+
     tab_div = dbc.Col([
             dbc.Row(total_tabs),
-            dbc.Row(tab_content_div)
+            dbc.Row(tab_content_div),
+            dbc.Row(tab_segment_memo),
+            dbc.Row(tab_label_memo)
         ],
     )
 
@@ -308,17 +326,17 @@ def get_main_div():
         dbc.Col(tab_div)
     ])
 
-## Callbacks limited for Navigation and Loading ##
+# ## Callbacks limited for Navigation and Loading ##
 
-@callback(
-    Output("tab_content_div","children"),
-    Input("tabs_div","active_tab")
-)
-def switch_tabs(tab_oi) -> html.Div:
-    if tab_oi == "segment_tab":
-        return get_segment_tab()
-    if tab_oi == "label_tab":
-        return get_label_tab()
+# @callback(
+#     Output("tab_content_div","children"),
+#     Input("tabs_div","active_tab")
+# )
+# def switch_tabs(tab_oi) -> html.Div:
+#     if tab_oi == "segment_tab":
+#         return get_segment_tab()
+#     if tab_oi == "label_tab":
+#         return get_label_tab()
 
 
 if __name__ == "__main__":
