@@ -279,16 +279,62 @@ def input_arrows(left_clicks,right_clicks,iid,tid,mid,):
         [html.Img(src=markers_b64,className="processed_image")]
     ]
 
-def forward_label_click():
-    raise NotImplemented
+@callback(
+    output=[
+        Output("labeling_instructions_div","children"),
+        Output("labeling_image_div","children", allow_duplicate=True),
+        Output("labeling_field","value")
+        ],
+    inputs=[
+        Input("labeling_left_arrow","n_clicks"),
+        Input("labeling_right_arrow","n_clicks")
+        ],
+    prevent_initial_call=True
+)
+def labeling_arrows(left_click,right_click):
+    if len(state.images) == 0:
+        return [iid,tid,mid]
 
-def back_label_click():
-    raise NotImplemented
+    triggered_id = ctx.triggered_id
+    if triggered_id == "labeling_right_arrow":
+        dash_helper.move_region(state.image_segmenter,1)
+    elif triggered_id == "labeling_left_arrow":
+        dash_helper.move_region(state.image_segmenter,-1)
 
-def update_df_region_label():
-    raise NotImplemented
+    # Provide update to grab the region of interest
+    text_update = f'''
+        Write label for Region {state.image_segmenter._region_tracker} below (Total Regions: {len(state.image_segmenter.df)})\n
+    '''
+    region_target = state.image_segmenter.region_dict[state.image_segmenter._region_tracker]
+    image_64 = dash_helper.np_to_base64(region_target)
+    image_div = html.Img(src=image_64)
 
-def save_label():
+    # Also modify the label field
+    label_text = state.image_segmenter.df.loc[
+                state.image_segmenter.df["Region"] == state.image_segmenter._region_tracker,"Labels"
+            ].tolist()[0]
+    if label_text is None:
+        label_text = ""
+
+    return [text_update,[image_div],label_text]
+
+@callback(
+    output=Output("output_blank","children"),
+    inputs=Input("labeling_field","value")
+)
+def update_df_region_label(val):
+    if state.batch_image_segmenter:
+        state.image_segmenter.update_df_label_at_region(val)
+
+    return [html.Div()]
+        
+@callback(
+    output=Output("save_csv_download","data"),
+    inputs=Input("save_csv_button","n_clicks"),
+    prevent_initial_call=True
+)
+def save_label(n_clicks):
+    return dcc.send_data_frame(state.batch_image_segmenter.df.to_csv,"labeled.csv")
     raise NotImplemented
 
 

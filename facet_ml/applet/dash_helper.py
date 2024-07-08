@@ -30,6 +30,34 @@ def upload_content_to_np(content):
     image = Image.open(BytesIO(decoded))
     return np.array(image)
 
+def region_roll(image_segmenter,region_val):
+    '''
+    Given a region, roll it if it exceeds max or min of regions
+    '''
+    if region_val > image_segmenter.df["Region"].max():
+            return image_segmenter.df["Region"].min()
+    elif region_val < image_segmenter.df["Region"].min():
+        return image_segmenter.df["Region"].max()
+    else:
+        return region_val
+
+def move_region(image_segmenter,val):
+    '''
+    Convenience function to adjust the image_segmenter's internal region_tracking
+    Need to check if the region actually exists as some may disappear if neglibible size
+    This moth-eaten region list will thus have skipped numbers
+    '''
+    check_val = 0 
+    for ii in range(len(image_segmenter.df)):
+        check_val += val
+        region_oi = check_val+image_segmenter._region_tracker
+        rolled_region = region_roll(image_segmenter, region_oi)
+        region_valid = rolled_region in image_segmenter.df["Region"].to_list()
+        if region_valid:
+            image_segmenter._region_tracker = rolled_region
+            return
+    
+    raise Exception("No valid regions found")
 
 def parse_contents_img(contents, filename, date):
     '''

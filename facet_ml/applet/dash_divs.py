@@ -229,12 +229,12 @@ def get_label_tab() -> html.Div:
     '''
     
     # Develop button presses for navigating labeling
-    left_labeling_button = save_h5_button = html.Div(
-        id="left_labeling_button",
+    labeling_left_arrow = save_h5_button = html.Div(
+        id="labeling_left_arrow",
         children=html.Button('<')
     )
-    right_labeling_button = save_h5_button = html.Div(
-        id="right_labeling_button",
+    labeling_right_arrow = save_h5_button = html.Div(
+        id="labeling_right_arrow",
         children=html.Button('>')
     )
     labeling_div = html.Div([
@@ -243,9 +243,9 @@ def get_label_tab() -> html.Div:
     ]
     )
     labeling_row = dbc.Row([
-        dbc.Col(left_labeling_button),
+        dbc.Col(labeling_left_arrow),
         dbc.Col(labeling_div),
-        dbc.Col(right_labeling_button)
+        dbc.Col(labeling_right_arrow)
     ])
 
     ## Develop Labeling Guide
@@ -278,7 +278,8 @@ def get_label_tab() -> html.Div:
     ## Combine all divs
     return html.Div([
         labeling_row,
-        labeling_column
+        labeling_column,
+        save_csv_button
     ])
 
 
@@ -325,7 +326,11 @@ def get_main_div():
 
     return dbc.Row(children=[
         dbc.Col(image_load_div),
-        dbc.Col(tab_div)
+        dbc.Col(tab_div),
+        html.Div(
+            id="output_blank",
+            style={"display":"none"}
+        )
     ])
 
 # ## Callbacks limited for Navigation and Loading ##
