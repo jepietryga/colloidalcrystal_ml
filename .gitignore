@@ -19,3 +19,4 @@ Models
 
 # Most png are not necessary
 *.png
+*.h5
