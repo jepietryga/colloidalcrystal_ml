@@ -48,9 +48,10 @@ def repeat_channels(x):
 
 class get_transform:
 
-    def __init__(self, train, im_size=256):
+    def __init__(self, train, im_size=256, mode: str = "no_blur"):
         self.train = train
-        self.im_size = 256
+        self.im_size = im_size
+        self.mode = mode
 
         transforms = [
             T.ToTensor(),
@@ -65,6 +66,8 @@ class get_transform:
                     90,
                 )
             )
+        if self.mode == "blur":
+            transforms.append(T.GaussianBlur(7))
         transforms.append(T.ToDtype(torch.float, scale=True))
         transforms.append(T.ToPureTensor())
 
@@ -126,6 +129,7 @@ def load_colloidal_datasets(
     batch_size: int = 15,
     num_workers: int = 8,
     stratify: bool = False,
+    mode: str = "no_blur",
 ) -> tuple[dict, dict]:
     """
     Provided an h5 and csv, prepare and return two dicts
@@ -137,10 +141,14 @@ def load_colloidal_datasets(
 
     # Separate into test/train, train gets augmented
     dataset_train = ColloidalDataset(
-        loaded_df, h5_total=loaded_h5s, transforms=get_transform(train=True)()
+        loaded_df,
+        h5_total=loaded_h5s,
+        transforms=get_transform(train=True, mode=mode)(),
     )
     dataset_test = dataset_train = ColloidalDataset(
-        loaded_df, h5_total=loaded_h5s, transforms=get_transform(train=False)()
+        loaded_df,
+        h5_total=loaded_h5s,
+        transforms=get_transform(train=False, mode=mode)(),
     )
 
     # Separate now into Dataloader subsets of each
