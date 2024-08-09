@@ -19,25 +19,3 @@ Models
 
 # Most png are not necessary
 *.png
-*.h5
-
-# Most csv not necessary
-*.csv
-
-# Pycache is cursed
-*pycache*
-*pyc*
-*.pyc*
-*/*pyc*
-*/*/*pyc*
-
-# Ignore large amounts of data that be generated elsewhere
-ProcessedData/2023_*
-*._DS_Store*
-*.DS_Store*
-
-# 
-ProcessedData/Training_Data_20240216/4 nM 4.h5.zip
-Testing/test.h5
-Testing/test.h5
-Testing/test.h5
