@@ -375,7 +375,7 @@ class ImageSegmenter:
         right_boundary: int = 2560,
         result_folder_path: str = "Results",
         override_exists: bool = False,
-        file_str: str = None,
+        filename: str = None,
         segmenter: str = "algorithmic",
         segmenter_kwargs: dict = {},
         region_featurizers: list = [
@@ -388,6 +388,7 @@ class ImageSegmenter:
             feat.LongestContiguousConvexityCurvatureFeaturizer(),
             feat.DistinctPathsCurvatureFeaturizer(),
         ],
+        file_str:str = None
     ):
         """
         Main class for handling segmentation pipeline.
@@ -414,6 +415,7 @@ class ImageSegmenter:
         self.file_str = file_str
         self.segmenter_kwargs = segmenter_kwargs
         self.region_featurizers = region_featurizers
+
 
         # Image variables
         self._image_read = None
@@ -463,6 +465,7 @@ class ImageSegmenter:
         self._region_tracker = None  # Used for keeping tabs on where in region list we are, created in self.df
 
         # Initialize input path
+        self._filename = filename
         self.input_path = self._input_path
 
     def reset(self):
@@ -475,7 +478,17 @@ class ImageSegmenter:
         self._image_working = None
         self._image_labeled = None
         self._thresh = None
-        self._segmenter.image = self.image_cropped
+        self.segmenter.image = None
+
+    @property
+    def filename(self):
+        if self._filename is None:
+            self._filename = "tmp"
+        return self._filename
+
+    @filename.setter
+    def filename(self, value):
+        self._filename = value
 
     @property
     def input_path(self):
@@ -485,27 +498,28 @@ class ImageSegmenter:
     def input_path(self, value):
         self._input_path = value
         if self._input_path is not None:
-            # Clear the dataframe and labeled_image, if it exists
-            self.reset()
-
             # Redefine internal paths (these may be removed at some point)
             if isinstance(self._input_path, str):
-                self._file_name = ".".join(
+                self.filename = ".".join(
                     self.input_path.split("/")[-1].split(".")[:-1]
                 )
             else:
                 temp_image = self._input_path
-                self._input_path = "tmp.png"
-                self._file_name = "tmp"
-                print(self._input_path)
+                self._input_path = f"{self.filename}.png"
+                
                 cv2.imwrite(
-                    f"{self._file_name}.png",
+                    self._input_path,
                     temp_image,
                     [cv2.IMWRITE_PNG_COMPRESSION, 0],
                 )
-                # cv2.imwrite()
 
-            self._csv_file = f"{self.result_folder_path}/values_{self._file_name}_{self.file_str}.csv"
+            # Clear the dataframe and labeled_image, if it exists
+            self.reset()
+
+            # Load into the segmenter
+            self.segmenter.image = self.image_cropped
+
+            self._csv_file = f"{self.result_folder_path}/values_{self._filename}_{self.file_str}.csv"
 
             # self.process_images(edge_modification=self.edge_modification)
 
@@ -560,6 +574,8 @@ class ImageSegmenter:
         """
         if self.input_path is None:
             raise Exception("Error: ImageSegmenter has no input_path")
+
+        print(self.input_path)
 
         # Raw Read-in
         self._image_read = cv2.imread(self.input_path, 0)
@@ -720,9 +736,7 @@ class ImageSegmenter:
         Save all images and regions to an h5 file for easy access
         Since some Regions may be skipped during measurement, need to key on this
         """
-        if file_name.split(".")[-1] != "h5":
-            Exception(f"Error: {file_name} is not an h5 file. Change the extension")
-
+        
         f = h5py.File(file_name, mode)
 
         group_name = Path(self._input_path).stem
@@ -956,6 +970,16 @@ class ImageSegmenter:
         self.edge = cv2.Canny(img_blur, tl, tu, apertureSize=3, L2gradient=True)
         return self.edge
 
+    @classmethod
+    def from_array(cls,
+        array:np.ndarray
+    ):
+        '''
+        If given an image file, make a temporary file and use that as reference.
+        '''
+        raise NotImplemented
+        # Create the temporary file
+
 
 class BatchImageSegmenter:
 
@@ -983,6 +1007,7 @@ class BatchImageSegmenter:
             feat.DistinctPathsCurvatureFeaturizer(),
         ],
         file_str=None,
+        filename_list=None
     ):
         """
         Class for doing batch processing of an image segmenter.
@@ -1002,6 +1027,7 @@ class BatchImageSegmenter:
         self.segmenter = segmenter
         self.segmenter_kwargs = segmenter_kwargs
         self.file_str = file_str
+        self.filename_list = filename_list
 
         # Template
         self._template_IS = ImageSegmenter(
@@ -1047,8 +1073,14 @@ class BatchImageSegmenter:
         self._img_list = val
 
         self._IS_list = []
-        for img_oi in self._img_list:
+        for ii, img_oi in enumerate(self._img_list):
             ready_IS = copy.deepcopy(self._template_IS)
+            
+            # Create an IS
+            if self.filename_list:
+                assert(len(self.filename_list) == len(self._img_list))
+                ready_IS.filename = self.filename_list[ii].split(".")[0]
+            print(ready_IS.filename)
             ready_IS.input_path = img_oi
             self._IS_list.append(ready_IS)
 
