@@ -1,0 +1,2 @@
+[console_scripts]
+applet = facet_ml.applet.app_main:run_app

@@ -5,12 +5,19 @@ Images/Additional/Images to rachel (from Yuanwei)/*/
 # Ignore ALL Results
 Results
 
-# Ignore ALL Images... Just download these manually for reals
+# Ignore ALL Images... Just download these manually for use
 Images
+Image_Data_Repository
+
 
 # Larger Models
-Models/bg_segmenter.pickle
-Models/detectron2/model_final.pth
+facet_ml/static/Models/bg_segmenter.pickle
+facet_ml/static/Models/detectron2/model_final.pth
+facet_ml/static/Models/sam_vit_l_0b3195.pth
+Models
+*.pth
 
 # Most png are not necessary
 *.png
+*.h5
+

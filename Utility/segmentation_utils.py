@@ -248,12 +248,11 @@ class ImageSegmenter():
         # Custom Pixel Classifier Variables
         self.pixel_model = None
         self.edge_model = None
-<<<<<<< HEAD
+
 
         # hidden variables
         self._img_edge = None
-=======
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
+
 
         self.process_images(edge_modification=self.edge_modification)
 
@@ -282,11 +281,9 @@ class ImageSegmenter():
         #self.img3[self.markers2 == -1] = [0, 255,255]
 
         self.img4 = color.label2rgb(self.markers2, bg_label=0)
-<<<<<<< HEAD
-        #self.decorate_regions()
-=======
+
         self.decorate_regions()
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
+
 
     def set_markers(self,
         blur=False,
@@ -320,17 +317,10 @@ class ImageSegmenter():
         kernel = self.kernel
 
         self._generate_threshold()
-<<<<<<< HEAD
         self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_OPEN, kernel,iterations = 2)
         self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_CLOSE, kernel,iterations = 2)
         #what is definitely your background?
         self._bg_mark = cv2.dilate(self.thresh,kernel,iterations=3)
-=======
-        #self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_OPEN, kernel,iterations = 2)
-        #self.thresh = cv2.morphologyEx(self.thresh, cv2.MORPH_CLOSE, kernel,iterations = 2)
-        #what is definitely your background?
-        self._bg_mark = cv2.dilate(self.thresh,kernel)
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
 
         self._pre_thresh = copy.deepcopy(self.thresh)
         #apply distance transform
@@ -346,10 +336,7 @@ class ImageSegmenter():
                                             borderType=cv2.BORDER_CONSTANT,
                                             value=0
                                             )
-<<<<<<< HEAD
-        print(type(thresh_border))
-=======
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
+
         self._dist_transform = cv2.distanceTransform(thresh_border, cv2.DIST_L2, 5)
         self._dist_transform = self._dist_transform[1:-1,1:-1]
 
@@ -362,38 +349,33 @@ class ImageSegmenter():
         #    maxima_rule = self.distance_scale*dist_weighted_maxima
         #else:
         maxima_rule = self.distance_scale*self._dist_transform.max()
-<<<<<<< HEAD
+
         scaling_rule = self._dist_transform.max()*.35
         ret2, fg_mark = cv2.threshold(self._dist_transform, scaling_rule, 255, 0)
         #fg_mark = cv2.adaptiveThreshold(self._dist_transform.astype(np.uint8),255,
         #                                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY,51,-2)
-=======
-        ret2, fg_mark = cv2.threshold(self._dist_transform, maxima_rule, 255, 0)
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
+
         self._fg_mark = np.uint8(fg_mark)
 
         #the unknown pixels
         self.unknown = cv2.subtract(self._bg_mark, self._fg_mark)
-<<<<<<< HEAD
         self.outputs = cv2.connectedComponentsWithStats(self._fg_mark)
-        
-=======
+        self.label_increment = 10
 
-        self.outputs = cv2.connectedComponentsWithStats(self._fg_mark)
-        self.label_increment = 20
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
+        self.markers = self.outputs[1]+self.label_increment
+
+        self.markers[unknown == 255]=0
+        temp_markers = copy.deepcopy(self.markers)
+        self.markers2 = cv2.watershed(self.img3,temp_markers)
 
         self.markers = self.outputs[1]+self.label_increment
 
         self.markers[self.unknown == 255]=0
         temp_markers = copy.deepcopy(self.markers)
-<<<<<<< HEAD
         #print(np.shape(self.img2),np.shape(self.img3))
         img3_blur = cv2.GaussianBlur(self.img3,(9,9),0)
         self.markers2 = cv2.watershed(img3_blur,temp_markers)
-=======
-        self.markers2 = cv2.watershed(self.img3,temp_markers)
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
+
 
     def _otsu_threshold(self,blur=None):
         '''
@@ -401,12 +383,6 @@ class ImageSegmenter():
         '''
         threshable = self.img2 if not blur else cv2.GaussianBlur(self.img2, self.blur_size,0)
         ret, thresh = cv2.threshold(threshable, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-<<<<<<< HEAD
-
-        # Quick check
-        #ret, thresh = cv2.threshold(threshable, ret-30, 255, cv2.THRESH_BINARY)
-=======
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
         return ret, thresh
 
     def _pixel_threshold(self):
@@ -445,11 +421,8 @@ class ImageSegmenter():
         thresh = cv2.adaptiveThreshold(self.img2,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                             cv2.THRESH_BINARY,53,10)
         tl = (img2_blur > threshold_local(img2_blur,35,offset=10)).astype(np.uint8)*255
-<<<<<<< HEAD
         tl = quick_close(tl,3,3)
-=======
-        tl = quick_close(tl,3,4)
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
+
         cv2.imwrite(self._file_name+"_lt_test.png",tl)
         return tl
         return thresh
@@ -590,11 +563,8 @@ class ImageSegmenter():
 
         elif edge_modification == "darkbright": # Note: Probably add this as separate utility
             # Get Canny Edge
-<<<<<<< HEAD
             canny_args = [(5,5),20,50,80,80,False]
-=======
-            canny_args = [(9,9),40,50,80,80,False]
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
+
             canny_edge = self.canny_edge(*canny_args)
 
             # Define sharpen kernel
@@ -619,11 +589,8 @@ class ImageSegmenter():
             #canny_edge = cv2.Canny(img_edges,50,100)
             img_edges = cv2.filter2D(self.img2,-1,avg_kernel)
             img_edges = cv2.GaussianBlur(self.img2, (5,5),0)
-<<<<<<< HEAD
-            #img_edges = kernel_range(img_edges,5).astype(np.uint8)
-=======
+
             img_edges = kernel_range(img_edges,5).astype(np.uint8)
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
 
             img_edges[canny_edge == 0] = 0
 
@@ -738,7 +705,6 @@ class ImageSegmenter():
 
             # Modify threshold
             self.thresh = self.thresh-dark_edges
-<<<<<<< HEAD
 
         elif edge_modification == "testing":
             # Get Canny Edge
@@ -814,12 +780,10 @@ class ImageSegmenter():
             # This is used for "FACET SCORE"
             self._img_edge = copy.deepcopy(canny_edge)
         return self._img_edge
-=======
         
         # Finally, make sure we have a reference for the created edges
         # This is used for "FACET SCORE"
         self._img_edge = copy.deepcopy(canny_edge)
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
 
 
     def load_pixel_segmenter(self):
@@ -950,11 +914,8 @@ class ImageSegmenter():
     def region_dict(self):
         return self.grab_region_dict(focused=True,alpha=.7)
     
-<<<<<<< HEAD
     def grab_region_array(self,img_oi=None,focused=True,alpha=0,buffer=5):
-=======
-    def grab_region_array(self,img_oi=None,focused=True):
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
+
         '''
         Grab an array of images that are bounded (focused) or the same size as img2 (nopt focused)
         Can be useful for quickly making bools of regions
@@ -969,15 +930,10 @@ class ImageSegmenter():
         while ii < len(regions_list): # 1-Offset for counting purposes
             region_oi = regions_list[ii]+self.label_increment
             if focused:
-<<<<<<< HEAD
                 data_arr.append(self._grab_region(img_oi,region_oi,alpha=alpha,buffer=buffer))
             if not focused:
                 data_arr.append(self._grab_region(img_oi,region_oi,alpha=alpha,buffer=np.inf))
-=======
-                data_arr.append(self._grab_region(img_oi,region_oi,alpha=0,buffer=5))
-            if not focused:
-                data_arr.append(self._grab_region(img_oi,region_oi,alpha=0,buffer=np.inf))
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783
+
             ii += 1
         return data_arr
     
@@ -1122,7 +1078,6 @@ def grab_bound(img,mode="top",buffer=0):
             if len(num_list) > 1:
                 return bounded_expansion(xx+buffer,img,1)
     return -1
-<<<<<<< HEAD
 
 
 def detectron2_maskrcnn_solids(img,folder_path=None):
@@ -1157,5 +1112,3 @@ def detectron2_maskrcnn_solids(img,folder_path=None):
     '''
     
     return mask
-=======
->>>>>>> d857a709d14a45b01fbf3012e9aa7ee7f5d63783

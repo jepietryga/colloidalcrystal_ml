@@ -6,7 +6,9 @@ import pickle
 import os
 from sklearn.ensemble import RandomForestRegressor 
 import pandas as pd
-from Utility.segmentation_utils import *
+#from Utility.segmentation_utils import *
+from facet_ml.segmentation.segmenter import *
+from facet_ml.segmentation import thresholding as th
 import tqdm
 import matplotlib.pyplot as plt
 
@@ -63,7 +65,7 @@ def apply_coloring(IS,df_labeled):
     match_arr = ["Crystal","Multiple Crystal", "Incomplete", "Poorly Segmented"]
     
     region_arr = IS.grab_region_array(focused=False)
-    mod_image = cv2.cvtColor(IS.img2,cv2.COLOR_BGR2RGB)
+    mod_image = cv2.cvtColor(IS.image_cropped,cv2.COLOR_BGR2RGB)
     mask_image = copy.deepcopy(mod_image)*0
     ii = 0
     for index,row in df_labeled.iterrows():
@@ -77,7 +79,7 @@ def apply_coloring(IS,df_labeled):
     return final_image    
 
 # Define folders and features in models
-model_folder = "../Models"
+model_folder = "../facet_ml/static/Models"+"/2023_11_models"
 image_folder = "../Images"
 result_folder = "../Results"
 
@@ -106,17 +108,20 @@ features=['area',
          ]
 
 # Load models
-model_names = ["RF_C-MC_I-P.sav","RF_C_MC.sav","RF_I_P.sav"]
+model_names = ["RF_C-MC_I-P.sav",
+               "RF_C_MC.sav",
+               "RF_I_P.sav"]
 rf_CMC_IP, rf_C_MC, rf_I_P = [pickle.load(open(os.path.join(model_folder,model), 'rb'))\
                               for model in model_names]
 
 # Grab image folder
-super_folder = glob.glob("../Images/Organized/2023_02/*")
+super_folder = glob.glob("../Images/Figure2_Images_Plus/*")
 #super_folder = glob.glob("../Images/Training/")
 image_dir = super_folder[0]
 
 # Get all images
 ii = 0
+naming_model = "sam"
 for image_dir in tqdm.tqdm(super_folder):
     print(f"Looking in {image_dir}")
     df_experiment = pd.DataFrame()
@@ -128,7 +133,14 @@ for image_dir in tqdm.tqdm(super_folder):
     image_paths = glob.glob(os.path.join(image_dir,"*"))
     for image_path in tqdm.tqdm(image_paths):
         # define subdir
-        IS = ImageSegmenter(image_path,threshold_mode="ensemble",edge_modification="dark_bright")
+        threshold_mode =[th.otsu_threshold,
+                        th.local_threshold,
+                        th.pixel_threshold]
+                            
+        IS = ImageSegmenter(image_path,
+                            threshold_mode="segment_anything",
+                            #threshold_mode=threshold_mode,
+                            edge_modification="localthresh")
         df_image = IS.df
         
 
@@ -171,16 +183,22 @@ for image_dir in tqdm.tqdm(super_folder):
         im = apply_coloring(IS,df_image)
         fig, ax = plt.subplots(3,2,dpi=300)
         ax[0,0].imshow(IS.thresh)
-        ax[0,1].imshow(IS._edge_highlight)
+        if IS._edge_highlight is not None:
+            ax[0,1].imshow(IS._edge_highlight)
+        
         ax[1,0].imshow(IS.markers)
         ax[1,1].imshow(IS.markers2)
-        ax[2,0].imshow(IS._dist_transform)
+        if IS._dist_transform is not None:
+            ax[2,0].imshow(IS._dist_transform)
         ax[2,1].imshow(im)
         im_name = "".join( image_path.split("/")[-1].split(".")[:-1] )
-        plt.savefig(os.path.join(subdir,f"{im_name}.png"))
+        plt.savefig(os.path.join(subdir,f"{im_name}_{naming_model}.png"))
+        fig,ax = plt.subplots()
+        ax.imshow(im)
+        plt.savefig(os.path.join(subdir,f"{im_name}_color_{naming_model}.png"))
         ii += 1
         plt.close('all')
 
         df_experiment = pd.concat([df_experiment,df_image])
-    df_experiment.to_csv(os.path.join(subdir,image_dir.split("/")[-1]+"_ML.csv"))
+    df_experiment.to_csv(os.path.join(subdir,image_dir.split("/")[-1]+f"_ML_{naming_model}.csv"))
 
