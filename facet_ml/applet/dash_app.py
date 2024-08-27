@@ -1,1 +1,0 @@
-## Recreation of the other pyqt app, but using 

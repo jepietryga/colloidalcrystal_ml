@@ -13,9 +13,14 @@ or follow other methods with SSH or CLI!
 
 After that, you may use the requirements.txt file inside a virtual environment to ensure you have the correct libraries.
 
-The current Python version is 3.9.
 
 # How to use
-Notebooks is the main folder of interest. Here, several notebooks are available for segmenting and classifiying data, training and saving new models, and viewing data. Additionally, some experimental code is available for supplying additional features to data after the fact!
 
-Finally, there is one notebook for actually running the currently made models against other images--using this requires user input in the notebooks to specify which images. Load images of interest into the `Images/Additional` directory.
+`facet_ml` holds the main body of code, which includes code for segmenters, models, and utility scripts for handling images as well as the web applet code.
+
+`Notebooks` holds notebook files that walkthrough usage of some of the code. This includes segmentation, classification, and data viewing.
+
+`Scripts` has assorted scripts for using the codem ore quickly than a Notebook
+
+# Citing
+This code is being developed for a yet unpublished paper. Information will be attached at a later date.

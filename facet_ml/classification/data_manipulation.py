@@ -17,8 +17,6 @@ def adjust_df_crystal_noncrystal_data(df: pd.DataFrame):
     df_copy = df.replace(["Multiple Crystal", "Crystal"], "Crystalline")
     df_copy = df_copy.replace(["Poorly Segmented", "Incomplete"], "Not Crystalline")
 
-    # print(type(df_copy))
-    # print(df_copy)
     df_copy.dropna(subset=["Labels"], inplace=True)
     return df_copy
 

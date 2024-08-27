@@ -7,11 +7,12 @@ packages=['facet_ml']
 
 [metadata]
 name = 'facet_ml'
-version = '0.1.0'
+version = '0.2.0'
 
 [project]
 name = 'facet_ml'
-version = '0.1.0'
+version = '0.2.0'
 
 [project.scripts]
-applet = "facet_ml.applet.app_main:run_app"
+qt_applet = "facet_ml.applet.app_main:run_app"
+dash_applet = "facet_ml.applet.dash_main:run_app"

@@ -1,2 +1,3 @@
 [console_scripts]
-applet = facet_ml.applet.app_main:run_app
+dash_applet = facet_ml.applet.dash_main:run_app
+qt_applet = facet_ml.applet.app_main:run_app

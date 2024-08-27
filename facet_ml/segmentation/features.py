@@ -39,6 +39,7 @@ class Region:
 
         Args:
             region (np.ndarray): The region masked out from the rest of the image
+            featurizers (list[BaseRegionFeaturizer]) :
         """
         # Default variables
         self.region = region

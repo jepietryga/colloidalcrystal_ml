@@ -239,23 +239,11 @@ class UNet(nn.Module):
         self.outc = nn.Conv2d(32, n_classes, kernel_size=1)
 
     def forward(self, x):
-        p = lambda x: print(np.shape(x))
-        # p(x)
         x1 = self.inc(x)
-        # p(x1)
         x2 = self.down1(x1)
-        # p(x2)
         x3 = self.down2(x2)
-        # p(x3)
         x4 = self.down3(x3)
-        # p(x4)
         x5 = self.down4(x4)
-        # p(x5)
-        # p(x4)
-        # print(x4.size()[2:])
-        # interp = F.interpolate(x5, x4.size()[2:], mode="bilinear", align_corners=True)
-        # p(interp)
-        # p(torch.cat([x4, interp]))
         x = self.up1(
             torch.cat(
                 [
@@ -267,8 +255,6 @@ class UNet(nn.Module):
                 dim=1,
             )
         )
-        # print("UP 1 success")
-        # p(x)
         x = self.up2(
             torch.cat(
                 [
@@ -280,7 +266,6 @@ class UNet(nn.Module):
                 dim=1,
             )
         )
-        # p(x)
         x = self.up3(
             torch.cat(
                 [
@@ -292,7 +277,6 @@ class UNet(nn.Module):
                 dim=1,
             )
         )
-        # p(x)
         x = self.up4(
             torch.cat(
                 [
@@ -304,7 +288,6 @@ class UNet(nn.Module):
                 dim=1,
             )
         )
-        # p(x)
         logits = self.outc(x)
         logits = F.adaptive_avg_pool2d(
             logits, 1
@@ -312,12 +295,6 @@ class UNet(nn.Module):
         logits = logits.view(logits.size(0), -1)  # Flatten to (batch_size, n_classes)
 
         return logits
-
-
-# Example usage:
-# model = UNet(n_channels=3, n_classes=1)
-# x = torch.randn(1, 3, 572, 572)  # Example input
-# output = model(x)
 
 
 def train_model(
