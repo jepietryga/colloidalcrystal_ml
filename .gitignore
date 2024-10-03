@@ -18,6 +18,8 @@ Models
 *.pth
 
 # Most png are not necessary
+*.jpg
 *.png
 *.h5
-*.pyc
+*.pyc*
+
