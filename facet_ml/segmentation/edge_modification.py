@@ -163,7 +163,9 @@ def canny_edge_cv2(
     return edge
 
 
-### Edge Modification Functions, deifne them to return the EDGES, not modify the threshold yet
+### Edge Modification Functions, define them to return the EDGES, not modify the threshold yet
+### For functions, have them accept a child of the AbstractSegmenter class for ease of function use
+### In currenti teration, only AlgorithmicSegmenters care
 
 
 def edge_canny(
@@ -246,7 +248,7 @@ def edge_darkbright(segmenter):
     """
     Return edges associated with the DarkBright detection.
     This tries to set edges by acknowledging pixel brightness in its neighborhood
-    This is based on SEM imaging patterns
+    This is based on SEM imaging patterns for ddifferent edge types
 
     Args:
         segmenter (AlgorithmicSegmenter) : Algorithmic segmenter that is currently holding an image
@@ -299,7 +301,7 @@ def edge_darkbright(segmenter):
     live_edges[live_edges > cut_off] = 0
     live_edges[live_edges > 0] = 255
 
-    # broaden edges for visibility, store for figure reference
+    # broaden edges for visibility, store for visual reference later
     dead_broad = cv2.GaussianBlur(dead_edges, (3, 3), cv2.BORDER_DEFAULT)
     live_broad = cv2.GaussianBlur(live_edges, (3, 3), cv2.BORDER_DEFAULT)
     color_img = cv2.cvtColor(segmenter.image, cv2.COLOR_GRAY2RGB)
@@ -311,44 +313,6 @@ def edge_darkbright(segmenter):
     segmenter._live_edges = live_edges
 
     return live_edges
-
-
-def _edge_pixel_classifier(segmenter):
-    """
-    Experimental:
-    Given a RandomForest pixel classifier, identify which edges are valid overlap or facet
-
-    """
-    # Load model
-    segmenter._load_edge_classifier()
-
-    # Featurize Image
-    sigma_min = 1
-    sigma_max = 32
-    features_func = partial(
-        feature.multiscale_basic_features,
-        intensity=False,
-        edges=True,
-        texture=True,
-        sigma_min=sigma_min,
-        sigma_max=sigma_max,
-        channel_axis=None,
-    )
-    features = features_func(segmenter.image_cropped)
-
-    # Flatten features
-    (x, y, z) = features.shape
-    features = features.reshape(x * y, z)
-
-    # Predict
-    results = future.predict_segmenter(features, segmenter.edge_model)
-
-    # Reshape
-    thresh = 255 * (
-        results.reshape(x, y).astype(np.uint8) - 1
-    )  # To make Overlap and Facet
-    return thresh
-
 
 def edge_classifier(segmenter):
     """
@@ -393,7 +357,8 @@ def edge_classifier(segmenter):
 def edge_localthresh(segmenter):
     """
     Return edges associated with the local_thresholding of the image.
-    Local thresholding can delinate the edges of areas pretty consistently
+    Local thresholding can delinate the edges of areas pretty consistently, particularly in cases of step edges
+    which we most care about
 
     Args:
         segmenter (AlgorithmicSegmenter) : Algorithmic segmenter that is currently holding an image

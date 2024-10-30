@@ -9,6 +9,8 @@ import math
 import copy
 import pandas as pd
 
+import torch
+
 pd.options.mode.chained_assignment = None  # default='warn'
 import os
 from IPython.display import clear_output
@@ -30,11 +32,11 @@ from facet_ml.segmentation import features as feat
 from abc import ABC, abstractmethod, abstractproperty
 
 
+# Legacy incrementer for image pixels
 LABEL_INCREMENT = 20
+
 #### Segmenters ####
 # These just act on a given image, no foo-foo processing
-
-
 class AbstractSegmenter(ABC):
 
     @abstractmethod
@@ -58,6 +60,7 @@ class AbstractSegmenter(ABC):
     def reset_segmenter(self):
         """
         For a segmenter, remove all internal images
+        Readies for re-use on new image
         """
         self.image
         self._thresh = None
@@ -65,7 +68,6 @@ class AbstractSegmenter(ABC):
         self._image_labeled = None
         self._markers = None  # Seeds for regions
         self._markers_filled = None  # The actual regions of interest
-
 
     @property
     def image(self):
@@ -99,6 +101,7 @@ class AbstractSegmenter(ABC):
 
 class AlgorithmicSegmenter(AbstractSegmenter):
 
+    # Add new connections to thresholding functions as developed
     mapping_thresh = [
         (lambda tm: tm == "otsu", thresholding.otsu_threshold),
         (lambda tm: tm == "local", thresholding.local_threshold),
@@ -107,6 +110,7 @@ class AlgorithmicSegmenter(AbstractSegmenter):
         (lambda tm: isinstance(tm, list), thresholding.multi_threshold),
     ]
 
+    # Add new connections to edge thresholding functions as developed
     mapping_edge = [
         (
             lambda edge: edge == None,
@@ -157,11 +161,14 @@ class AlgorithmicSegmenter(AbstractSegmenter):
             # mapping : (bool fun, fun_to_call)
 
             thresh = None
+            success = False
             for bool_fun, mapped_fun in AlgorithmicSegmenter.mapping_thresh:
                 if bool_fun(self.threshold_mode):
                     thresh = mapped_fun(self)
-            if thresh is None:
-                raise Exception(f"{self.threshold_mode} not supported")
+                    success = True
+                    break
+            if not success:
+                raise Exception(f"{self.threshold_mode} not supported.")
 
             # Morphologically manipulate threshold
             thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, self.kernel, iterations=2)
@@ -220,37 +227,53 @@ class AlgorithmicSegmenter(AbstractSegmenter):
 
             image_blur = cv2.cvtColor(
                 cv2.GaussianBlur(self.image, (9, 9), 0), cv2.COLOR_GRAY2RGB
-            )  # NOTE: What's the impact of this
+            )
             self._markers_filled = cv2.watershed(image_blur, temp_markers)
         return self._markers_filled
 
     def load_pixel_segmenter(self):
         """
-        Load the pixel classifer. Is a LARGE model, so only use this if needed
+        Load the pixel classifer. This is a LARGE model, so only use this if needed
         """
         if not self.pixel_model:
             with open(STATIC_MODELS["bg_segmenter"], "rb") as f:
                 self.pixel_model = pickle.load(f)
 
-
 class MaskRCNNSegmenter(AbstractSegmenter):
 
-    def __init__(
-        self,
-        image: np.ndarray,
-    ):
+    def __init__(self, image: np.ndarray, device: str = None):
         """
         Create a Segmenter class which uses a MaskRCNN model from detectron2
 
         Args:
             image (np.ndarray) : Image to be segmented
+            device (str) : Device information for Torch
         """
         super().__init__(image)
+
+        import torch
+
+        folder_path = os.path.join(
+            Path(__file__).parent.parent, "static", "Models", "torch"
+        )
+        model_path = STATIC_MODELS["maskrcnn"]
+        if device is None:
+            if torch.cuda.is_available():
+                self.device = "cuda"
+            else:
+                self.device = "cpu"
+        elif torch.cuda.is_available() and "cuda" in device:
+            self.device = device
+        else:
+            self.device = "cpu"
+
+        self.model = torch.load(model_path)
+        self.model.to(self.device)
 
     @property
     def thresh(self):
         if self._thresh is None:
-            self._thresh = np.full_like(self.image, 0)
+            self._thresh = self.markers_filled > 0
         return self._thresh
 
     @property
@@ -261,16 +284,35 @@ class MaskRCNNSegmenter(AbstractSegmenter):
 
     @property
     def markers_filled(self):
+        import torch
+
         if self._markers_filled is None:
-            # Note to self: skimage.measure.label to leverage detectron2 model as a labeler
-            masks = detectron2_maskrcnn_solids(
-                cv2.cvtColor(self.image, cv2.COLOR_GRAY2RGB)
+            # Load the image into the model
+            mod_img = (
+                self.image
+                if len(self.image) == 3
+                else cv2.cvtColor(self.image, cv2.COLOR_GRAY2BGR)
             )
+            mod_img_torch = (
+                torch.tensor(np.moveaxis(mod_img, -1, 0)).to(self.device) / 255
+            )
+
+            out = self.model([mod_img_torch])[0]
+            self.out = out
+            masks = out["masks"].to("cpu").detach().numpy()
+            scores = out["scores"].to("cpu").detach().numpy()
+            mask_stack = [mask for ii, mask in enumerate(masks) if scores[ii] >= 0.5]
+            if len(mask_stack) == 0:
+                mask_stack = np.zeros((1, 1, *np.shape(self.image)))
+            masks = np.stack(mask_stack)
+
+            # Note to self: skimage.measure.label to leverage detectron2 model as a labeler
             self._markers_filled = self._label_increment * np.ones(np.shape(self.image))
-            num_markers, _, _ = np.shape(masks)
+            num_markers, _, _, _ = np.shape(masks)
             for ii in np.arange(num_markers):
 
-                mask_oi = masks[ii, :, :].astype(bool)
+                mask_oi = masks[ii, 0, :, :]
+                mask_oi = np.where(mask_oi > .5,True,False)
                 mask_bulk = cv2.erode(
                     mask_oi.astype(np.uint8), kernel=np.ones((3, 3))
                 ).astype(bool)
@@ -286,27 +328,32 @@ class SAMSegmenter(AbstractSegmenter):
         self,
         image: np.ndarray,
         device: str = None,
-        sam_kwargs: dict = {"points_per_side": 64},
+        sam_kwargs: dict = {
+            "points_per_side": 64, 
+                            },
     ):
         """
-        Create a Segmenter class which uses a SegmentAnything model from Meta
+        Create a Segmenter class which uses a SegmentAnything model from Meta.
+        This uses the AutomateddMaskGenerator by gridpoints
 
         Args:
             image (np.ndarray) : Image to be segmented
-            device (str) : specify if using cuda or cpu
+            device (str) : specify if using cuda or cpu for Torch
             sam_kwargs (dict) : Kwargs for segment_anything.SamAutomaticMaskGenerator
                             of segment anything
         """
-        import torch
 
         super().__init__(image)
         self.sam_kwargs = sam_kwargs
-
-        if torch.cuda.is_available() and device == "cuda":
-            self.device = "cuda"
+        if device is None:
+            if torch.cuda.is_available():
+                self.device = "cuda"
+            else:
+                self.device = "cpu"
+        elif torch.cuda.is_available() and "cuda" in device:
+            self.device = device
         else:
             self.device = "cpu"
-        torch.set_default_device(self.device)
 
         # SAM Variable
         self._mask_generator = None
@@ -320,42 +367,46 @@ class SAMSegmenter(AbstractSegmenter):
                 SamAutomaticMaskGenerator,
                 SamPredictor,
             )
-
+            
             model_type = "vit_l"
             sam_checkpoint = STATIC_MODELS["segment_anything_vit_l"]
             sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-            sam = sam.to(device=self.device)
-
+            sam.to(device=self.device)
             mask_generator = SamAutomaticMaskGenerator(sam, **self.sam_kwargs)
             self._mask_generator = mask_generator
         return self._mask_generator
 
     @property
     def thresh(self):
+        """
+        NOT a determiner for other work on this segmenter
+        Can set it just to be where there ar ergions
+        """
         if self._thresh is None:
-            self._thresh = np.full_like(self.image, 0)
+            self._thresh = self.markers_filled > 0
         return self._thresh
 
     @property
     def markers_filled(self):
         if self._markers_filled is None:
-            masks = self.mask_generator.generate(
-                cv2.cvtColor(self.image, cv2.COLOR_GRAY2RGB)
-            )
+            image_convert = cv2.cvtColor(self.image, cv2.COLOR_GRAY2RGB)
+            with torch.no_grad():
+                with torch.device(self.device):
+                    masks = self.mask_generator.generate(image_convert)
 
-            self._markers_filled = self._label_increment * np.ones(np.shape(self.image))
-            for ii, mask in enumerate(masks):
-                mask_oi = mask["segmentation"]
-                mask_bulk = cv2.erode(
-                    mask_oi.astype(np.uint8), kernel=np.ones((3, 3))
-                ).astype(bool)
-                mask_edge = ~mask_bulk & mask_oi
-                self._markers_filled[mask_edge] = -1
-                self._markers_filled[mask_bulk] = 1 + self._label_increment + ii
-            self._markers_filled = self._markers_filled.astype(int)
+                self._markers_filled = self._label_increment * np.ones(np.shape(self.image))
+                for ii, mask in enumerate(masks):
+                    mask_oi = mask["segmentation"]
+                    mask_bulk = cv2.erode(
+                        mask_oi.astype(np.uint8), kernel=np.ones((3, 3))
+                    ).astype(bool)
+                    mask_edge = ~mask_bulk & mask_oi
+                    self._markers_filled[mask_edge] = -1
+                    self._markers_filled[mask_bulk] = 1 + self._label_increment + ii
+                self._markers_filled = self._markers_filled.astype(int)
         return self._markers_filled
 
-
+# Add to this mapper as new segmenters are added
 segmenter_mapper = {
     "maskrcnn": MaskRCNNSegmenter,
     "segment_anything": SAMSegmenter,
@@ -388,10 +439,11 @@ class ImageSegmenter:
             feat.LongestContiguousConvexityCurvatureFeaturizer(),
             feat.DistinctPathsCurvatureFeaturizer(),
         ],
-        file_str:str = None
+        file_str: str = None,
     ):
         """
-        Main class for handling segmentation pipeline.
+        Main class for handling segmentation pipeline. Encapsulates reading an image (or image path), loading a segmenter, applying features, and 
+        assisted labeling.
 
         Args:
             input_path (string OR img)    : Path to the image desired to be interpreted (if img, create tmp file)
@@ -415,7 +467,6 @@ class ImageSegmenter:
         self.file_str = file_str
         self.segmenter_kwargs = segmenter_kwargs
         self.region_featurizers = region_featurizers
-
 
         # Image variables
         self._image_read = None
@@ -461,7 +512,7 @@ class ImageSegmenter:
         self._region_arr = None
         self._region_dict = None
 
-        # PyQt variables
+        # Applet variables
         self._region_tracker = None  # Used for keeping tabs on where in region list we are, created in self.df
 
         # Initialize input path
@@ -479,6 +530,8 @@ class ImageSegmenter:
         self._image_labeled = None
         self._thresh = None
         self.segmenter.image = None
+        self._region_dict = None
+        self._region_arr = None
 
     @property
     def filename(self):
@@ -500,13 +553,11 @@ class ImageSegmenter:
         if self._input_path is not None:
             # Redefine internal paths (these may be removed at some point)
             if isinstance(self._input_path, str):
-                self.filename = ".".join(
-                    self.input_path.split("/")[-1].split(".")[:-1]
-                )
+                self.filename = ".".join(self.input_path.split("/")[-1].split(".")[:-1])
             else:
                 temp_image = self._input_path
                 self._input_path = f"{self.filename}.png"
-                
+
                 cv2.imwrite(
                     self._input_path,
                     temp_image,
@@ -519,7 +570,9 @@ class ImageSegmenter:
             # Load into the segmenter
             self.segmenter.image = self.image_cropped
 
-            self._csv_file = f"{self.result_folder_path}/values_{self._filename}_{self.file_str}.csv"
+            self._csv_file = str(
+                Path(self.result_folder_path) / f"values_{ Path(self._filename).stem }_{self.file_str}.csv"
+            )
 
             # self.process_images(edge_modification=self.edge_modification)
 
@@ -534,19 +587,22 @@ class ImageSegmenter:
     @property
     def image_read(self):
         if self._image_read is None:
-            self.process_images()
+            self._image_read = cv2.imread(self.input_path, 0)
         return self._image_read
 
     @property
     def image_cropped(self):
         if self._image_cropped is None:
-            self.process_images()
+            self._image_cropped = self.image_read[
+                self.top_boundary : self.bottom_boundary,
+                self.left_boundary : self.right_boundary,
+            ]
         return self._image_cropped
 
     @property
     def image_working(self):
         if self._image_working is None:
-            self.process_images()
+            self._image_working = cv2.cvtColor(self.image_cropped, cv2.COLOR_GRAY2BGR)
         return self._image_working
 
     @property
@@ -569,31 +625,13 @@ class ImageSegmenter:
 
     def process_images(self):
         """
-        Create each of the images of interest.
+        Create each of the internal images of interest.
         Performs segmentation as part of the process
         """
         if self.input_path is None:
             raise Exception("Error: ImageSegmenter has no input_path")
 
-        print(self.input_path)
-
-        # Raw Read-in
-        self._image_read = cv2.imread(self.input_path, 0)
-        self._image_cropped = self.image_read[
-            self.top_boundary : self.bottom_boundary,
-            self.left_boundary : self.right_boundary,
-        ]
-        self._image_working = cv2.imread(self.input_path, 1)
-        self._image_working = self.image_working[
-            self.top_boundary : self.bottom_boundary,
-            self.left_boundary : self.right_boundary,
-        ]
-
-        # Perform segmentation
-        # self.set_markers(edge_modification=edge_modification)
-
         # Set regions by number, non-inclusive of background and edge border
-        # NOTE: markers was originally used, may be necessary...?
         self.regions_list = np.unique(self.markers_filled) - self._label_increment
         self.regions_list = [x for x in self.regions_list if x > 0]
 
@@ -601,7 +639,8 @@ class ImageSegmenter:
 
     def decorate_regions(self):
         """
-        Labels image 4 using information from Scikit to ensure commensurate labeling
+        Labels image 4 using information from Scikit to ensure commensurate labeling.
+        Generally a useful visualization tool
         NOTE: The big issue is ensuring regions line up
         """
 
@@ -672,6 +711,8 @@ class ImageSegmenter:
                 "feret_diameter_max",
                 #'solidity'
             ]
+
+            # Apply pixel scaler ot geometric features
             for key, val in clusters.items():
                 # print(f'{key}: {len(val)}')
                 if key == "area":
@@ -706,7 +747,7 @@ class ImageSegmenter:
             self._df = pd.DataFrame(clusters)
             self._region_tracker = self._df["Region"].min()
 
-            # Need to add regional info
+            # Add region featurizer info
             if len(self.region_featurizers) > 0:
                 region_dict = self.grab_region_dict(
                     self.image_cropped, focused=False, alpha=0
@@ -725,6 +766,9 @@ class ImageSegmenter:
         return self._df
 
     def create_csv(self):
+        '''
+        Simple function for saving csv. Helper function for live labeling to ensure progress is not lost
+        '''
         if self.override_exists:
             os.makedirs(self.result_folder_path, exist_ok=True)
             self.df.to_csv(self._csv_file)
@@ -735,8 +779,11 @@ class ImageSegmenter:
         """
         Save all images and regions to an h5 file for easy access
         Since some Regions may be skipped during measurement, need to key on this
+        Args:
+            file_name (str) : Name of file
+            mode (str) : Method by which to access the file
         """
-        
+
         f = h5py.File(file_name, mode)
 
         group_name = Path(self._input_path).stem
@@ -751,7 +798,6 @@ class ImageSegmenter:
         group.create_dataset("markers_filled", data=self.markers_filled)
 
         # Load in all regions identified
-        # dset = group.create_dataset("Regions",shape=(len(self.df),*np.shape(self.markers2)))
         dset = group.create_dataset(
             "Regions", shape=(self.df.Region.max(), *np.shape(self.markers_filled))
         )
@@ -802,7 +848,13 @@ class ImageSegmenter:
     def grab_region_array(self, img_oi=None, focused=True, alpha=0, buffer=5):
         """
         Grab an array of images that are bounded (focused) or the same size as image_cropped (not focused)
-        Can be useful for quickly making bools of regions
+        Can be useful for quickly making bools of regions of any internal image, so is distinguished from region_arr attribute
+        Args:
+            img_oi (np.ndarray) : image with same size as working image. Can be markers, image_working, etc.
+            focused (bool) : If focused, return regions focused solely on the region area, plus the buffer amount of pixels on each side. 
+                            Helpful for visualization
+            alpha (float) : Alpha channel for pixels not associatredd with the region. Can highlight difference in region and dnearby image spots
+            buffer (int) : Buffer pixels to pad to mask if focusing the image
         """
         if img_oi is None:
             img_oi = self.image_cropped
@@ -825,6 +877,16 @@ class ImageSegmenter:
         return data_arr
 
     def grab_region_dict(self, img_oi=None, focused=True, alpha=0.7):
+        """
+        Grab a dict of regions that are bounded (focused) or the same size as image_cropped (not focused)
+        Can be useful for quickly making bools of regions of any internal image, so is distinguished from region_arr attribute
+        Args:
+            img_oi (np.ndarray) : image with same size as working image. Can be markers, image_working, etc.
+            focused (bool) : If focused, return regions focused solely on the region area, plus the buffer amount of pixels on each side. 
+                            Helpful for visualization
+            alpha (float) : Alpha channel for pixels not associatredd with the region. Can highlight difference in region and dnearby image spots
+            buffer (int) : Buffer pixels to pad to mask if focusing the image
+        """
 
         if img_oi is None:
             img_oi = self.image_cropped
@@ -853,7 +915,9 @@ class ImageSegmenter:
         },
     ):
         """
-        Major Utility function for labeling of segmented regions
+        Major Utility function for labeling of segmented regions in a jupyter notebook.
+        Args:
+            labeling_dict (dict) : To speed up labeling, assign letters to a full label for easy mapping. Will also catch missed keystrokes
         """
         # Make sure B and D are not overwritten
         if "B" in labeling_dict or "D" in labeling_dict:
@@ -910,20 +974,30 @@ class ImageSegmenter:
             # Clean-up
             translated_input = labeling_dict[user_input]
 
+            # Save for live editing and to not lose information
             self.df.loc[self.df["Region"] == region_oi, "Labels"] = translated_input
             self.df.to_csv(self._csv_file)
 
             ii = ii + 1
 
-    ## PyQt Helper functions below
+    ## Applet Helper functions below
     def update_df_label_at_region(self, label, region=None):
+        '''
+        Set label for the dadtaframe row of region
+        Args:
+            label (str) : Label to store
+            region (int) : Region row to target
+        '''
         if region is None:
             region = self._region_tracker
         self.df.loc[self.df["Region"] == region, "Labels"] = label
 
     def labeling_mapping(self):
         """
-        Code added 2022.08.12 for debugging and salvaging data
+        Code added 2022.08.12 for debugging and salvaging data. 
+        Issue: Row, index, andd posiiton in array were messedd dup by 0 to 1 pixel regions disappearing. This salvaged data
+        by recreating the originaal dadta and dthen approrpiately aaccounting for offset.
+        Kept for reference 
         """
         self.df  # To ensure it's been initialized
         ii = 0
@@ -941,44 +1015,6 @@ class ImageSegmenter:
             ii = ii + 1
         return mapping_region, mapping_index
 
-    def canny_edge(
-        self,
-        blur_size=None,
-        tl=None,
-        tu=None,
-        d=None,
-        ss=None,
-        use_bilateral=False,
-    ):
-        if not blur_size:
-            blur_size = self.blur_size
-        if not tl:
-            tl = self.canny_tl
-        if not tu:
-            tu = self.canny_tu
-        if not d:
-            d = self.bilateral_d
-        if not ss:
-            ss = self.bilateral_ss
-
-        if not use_bilateral:
-            print(blur_size)
-            img_blur = cv2.GaussianBlur(self.image_cropped, blur_size, 0)
-            # img_blur = cv2.GaussianBlur(img_blur,blur_size,0)
-        else:
-            img_blur = cv2.bilateralFilter(self.image_cropped, d, ss, ss)
-        self.edge = cv2.Canny(img_blur, tl, tu, apertureSize=3, L2gradient=True)
-        return self.edge
-
-    @classmethod
-    def from_array(cls,
-        array:np.ndarray
-    ):
-        '''
-        If given an image file, make a temporary file and use that as reference.
-        '''
-        raise NotImplemented
-        # Create the temporary file
 
 
 class BatchImageSegmenter:
@@ -1007,7 +1043,7 @@ class BatchImageSegmenter:
             feat.DistinctPathsCurvatureFeaturizer(),
         ],
         file_str=None,
-        filename_list=None
+        filename_list=None,
     ):
         """
         Class for doing batch processing of an image segmenter.
@@ -1016,6 +1052,8 @@ class BatchImageSegmenter:
 
          Use this in cases where holding all images simultaneously is desirable,
          but be warned it can take in a large amount of memory!
+
+         This is used internally for the applet
         """
         self.pixels_to_um = pixels_to_um
         self.top_boundary = top_boundary
@@ -1075,12 +1113,11 @@ class BatchImageSegmenter:
         self._IS_list = []
         for ii, img_oi in enumerate(self._img_list):
             ready_IS = copy.deepcopy(self._template_IS)
-            
+
             # Create an IS
             if self.filename_list:
-                assert(len(self.filename_list) == len(self._img_list))
+                assert len(self.filename_list) == len(self._img_list)
                 ready_IS.filename = self.filename_list[ii].split(".")[0]
-            print(ready_IS.filename)
             ready_IS.input_path = img_oi
             self._IS_list.append(ready_IS)
 
@@ -1169,10 +1206,10 @@ class BatchedRegionDict:
             else:
                 val_tracker = check_inside
 
-        raise Exception("Exception: Out of range")
+        raise Exception("BatcheddRegionDict Exception: Out of range")
 
     def __setitem__(self, val):
-        raise Exception("Setting values not supported")
+        raise Exception("BatchedRegionDict Error: Setting values not supported")
 
     def __len__(self):
         return np.sum([len(ii) for _, ii in self.grouped_dict.items()])
@@ -1182,7 +1219,9 @@ def grab_bound(img, mode="top", buffer=0):
     """
     For an intensity img with region of interest and all others blacked out, get a bound defined by mode
 
-    Returns x- or y-coordinate
+    Returns x- or y-coordinate for the dedisgnated 'mode'
+    Args:
+        moded (str) : 'top', 'bottom', 'left', or 'right'
     """
 
     def bounded_expansion(coord, img, axis):
@@ -1217,41 +1256,3 @@ def grab_bound(img, mode="top", buffer=0):
             if len(num_list) > 1:
                 return bounded_expansion(xx + buffer, img, 1)
     return -1
-
-
-def detectron2_maskrcnn_solids(img, folder_path=None):
-    """
-    Use the trained Mask-RCNN in "Models"
-    """
-    from detectron2.engine import DefaultPredictor
-    from detectron2.config import get_cfg
-
-    if folder_path is None:
-        folder_path = os.path.join(
-            Path(__file__).parent.parent, "static", "Models", "detectron2"
-        )
-
-    # Get cfg
-    import yaml
-
-    # with open(os.path.join(folder_path,"config.yaml"),"r") as f:
-    #    cfg = yaml.load(f,Loader=yaml.BaseLoader)
-
-    cfg = get_cfg()
-    cfg.merge_from_file(os.path.join(folder_path, "config.yaml"))
-
-    cfg.MODEL.WEIGHTS = os.path.join(folder_path, "model_final.pth")
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.2
-
-    predictor = DefaultPredictor(cfg)
-
-    outputs = predictor(img)
-
-    mask = outputs["instances"].pred_masks.to("cpu").numpy()
-    """
-    z,y,x = np.shape(mask)
-    for ii in np.arange(z):
-        plt.imsave(f"mask{ii}.png",mask[ii,:,:])
-    """
-
-    return mask

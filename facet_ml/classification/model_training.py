@@ -1,6 +1,7 @@
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn import metrics
+from sklearn.model_selection import StratifiedKFold
 import os 
 import sys
 sys.path.append('..')
@@ -42,9 +43,8 @@ class ModelTrainer():
                 features:Union[str,list],
                 targets:list[str]="Labels",
                 labels:list[str]=["Crystalline","Not Crystalline"],
-                test_size:float=.2,
+                n_splits:int = 5,
                 seed:int=None,
-                regressor:bool=False
                 ):
         '''
         ModelTrainer class wraps a lot of model training functionality together for easy tracking
@@ -57,6 +57,10 @@ class ModelTrainer():
                                     If dict, these are treated as kwargs for the model_class init
             features (str,dict) : If str, try and load from the config_features
                                     If list, use these features directly
+            targets (list[str]) : List of training targets
+            labels (list[str]) : In the Label's target, only target these labels and remove others
+            test_size (float) : Size of the RandomForest test set
+            seed (int) : Seed for randomizer
         '''
         self.df = df
         self.model_class = model_class
@@ -65,17 +69,12 @@ class ModelTrainer():
         self.targets = targets
         self.labels = labels
         self.seed = seed
-        self.regressor = regressor
-        self.test_size = test_size
+        self.n_splits = n_splits
 
         # Model variables
         self.model = None
         self.X = None
         self.y = None
-        self.X_train = None
-        self.y_train = None
-        self.X_test = None
-        self.y_test = None
 
         # Find Best Model variables
         self.best_run_dict = {
@@ -88,6 +87,18 @@ class ModelTrainer():
             "y_train":None,
         }
         self.logging_f1 = None
+
+    def _get_features_targets(self):
+        '''
+        Helper function to get X and y
+        '''
+        # Filtering
+        self.df = self.df[self.df[self.targets].isin(self.labels)]
+        self.df = self.df.dropna(subset=self.features + [self.targets])
+        self.df = self.df[~self.df[self.features + [self.targets]].isin([np.inf, -np.inf]).any(axis=1)]  # Drop rows with inf
+
+        self.X = self.df[self.features]
+        self.y = self.df[self.targets]
 
     def train_test_split(self,
                          test_size:float=None,
@@ -108,35 +119,26 @@ class ModelTrainer():
 
         return self.X_train,self.X_test,self.y_train,self.y_test
 
-    def fit(self):
+    def fit(self, X_train, y_train):
         self.model = self.model_class(**self.model_params)
-        self.model.fit(self.X_train,self.y_train)
+        self.model.fit(X_train,y_train)
 
-    def predict(self,
-                X=None):
-        if not X:
-            X = self.X_test
-        self.y_pred = self.model.predict(X)
-        return
+    def predict(self, X):
+        return self.model.predict(X)
 
-    def score(self):
-        self.f1 = metrics.f1_score(self.y_test,self.y_pred,average='macro')
+    def score(self,y_test,y_pred):
+        f1 = metrics.f1_score(y_test,y_pred,average='macro')
         
-        self.confusion_matrix = metrics.multilabel_confusion_matrix(self.y_test,self.y_pred,
+        confusion_matrix = metrics.multilabel_confusion_matrix(y_test,y_pred,
             labels=self.labels)
         
-    def update_best_run(self):
-        self.score()
-        if self.f1 > self.best_run_dict["f1_score"]:
-                self.best_run_dict = {
-                    "model":copy.deepcopy(self.model),
-                    "f1_score":copy.deepcopy(self.f1),
-                    "confusion_matrix":copy.deepcopy(self.confusion_matrix),
-                    "X_test":copy.deepcopy(self.X_test),
-                    "X_train":copy.deepcopy(self.X_train),
-                    "y_test":copy.deepcopy(self.y_test),
-                    "y_train":copy.deepcopy(self.y_train),
-                }
+        return f1, confusion_matrix
+        
+    def update_best_run(self,
+                        run_kwargs
+                        ):
+        if run_kwargs["f1_score"] > self.best_run_dict["f1_score"]:
+                self.best_run_dict = run_kwargs
 
     def reset_best_run(self):
         self.best_run_dict = {
@@ -156,33 +158,56 @@ class ModelTrainer():
         This can help with RandomForestClassifiers to get a reasonable first guess
 
         Args:
-            iterations (int):Numer of times to run the fit-predict-score loop
+            iterations (int):Number of times to run the fit-predict-score loop
 
         '''
+        self._get_features_targets()
         logging_f1 = []
         for seed in tqdm.tqdm(np.arange(iterations)):
-            self.train_test_split(random_state=seed)
-            self.fit()
-            self.predict()
-            self.score()
+            fold_f1_scores = []
+            
+            # Create a new instance of StratifiedKFold for each iteration with a random seed
+            folds = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=seed)
 
-            self.update_best_run()
+            for train_index,test_index in folds.split(self.X,self.y):
+                X_train, X_test = self.X.iloc[train_index], self.X.iloc[test_index]
+                y_train, y_test = self.y.iloc[train_index], self.y.iloc[test_index]
+
+                # self.train_test_split(random_state=seed)
+                self.fit(X_train,y_train)
+                y_pred = self.predict(X_test)
+                f1, confusion_matrix = self.score(y_test,y_pred)
+
+                run_info = {
+                    "model":copy.deepcopy(self.model),
+                    "f1_score":f1,
+                    "confusion_matrix":confusion_matrix,
+                    "X_test":X_test,
+                    "X_train":X_train,
+                    "y_test":y_test,
+                    "y_train":y_train
+                }
+
+                fold_f1_scores.append(f1)
+                self.update_best_run(run_kwargs=run_info)
 
             # Log data
-            logging_f1.append(self.f1)
+            logging_f1.append(np.mean(fold_f1_scores))
 
-        return self.logging_f1
+        return logging_f1
             
 
-def replace_and_clean_labels_df(df:pd.DataFrame,replace_list:list,) -> pd.DataFrame:
+def replace_and_clean_labels_df(df:pd.DataFrame,replace:list,) -> pd.DataFrame:
     '''
-    Given a dataframe, use the replace list (populated with ( [terms to replace], replace) ),
-    replace each value in the Labels column
-    Then, clear any other held value
+    Given a dataframe, perform replace operation and remove labels NOT associated with any new names
+
+    Args:
+        df (pd.DataFrame) : Dataframe to replace names in
+        replace (dict) : Replacement dict to use for replacement
     '''
     df_copy = df.copy()
     label_list = []
-    for targets, replacer in replace_list:
+    for targets, replacer in replace.items():
         label_list.append(replacer)
         df_copy.replace(targets,replacer,inplace=True)
 

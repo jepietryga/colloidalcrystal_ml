@@ -1,7 +1,9 @@
 # What is this?
-This is a WIP tool for Image Segmenting colloidal crystal SEM Images and building models out of them to automate counting & classification.
+This is a tool for ImageSegmenting colloidal crystal SEM Images and building models out of them to automate counting & classification.
 
-Currently, Random Forest is the utilized model, but others may work!
+The main use of this repository is to access the ImageSegmenter class as it allows users to utilize different computer vision tools through classes and applets forp erfomring segmentation and labeling.
+
+Additionally, code for helping train and utilize RandomForest classification models is also included.
 
 # How to install
 Use 
@@ -16,11 +18,10 @@ After that, you may use the requirements.txt file inside a virtual environment t
 
 # How to use
 
-`facet_ml` holds the main body of code, which includes code for segmenters, models, and utility scripts for handling images as well as the web applet code.
+`facet_ml` holds the main body of code, which includes code for segmenters, models, and utility scripts for handling images as well as the applet code.
 
-`Notebooks` holds notebook files that walkthrough usage of some of the code. This includes segmentation, classification, and data viewing.
+`Tutorials` holds notebook and script files that walkthrough usage of some of the code. This includes segmentation, classification, and data viewing.
 
-`Scripts` has assorted scripts for using the codem ore quickly than a Notebook
 
 # Citing
 This code is being developed for a yet unpublished paper. Information will be attached at a later date.

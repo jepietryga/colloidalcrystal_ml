@@ -12,7 +12,12 @@ STATIC_MODELS["edge_classifier"] = os.path.join(STATIC_FOLDER,
 STATIC_MODELS["bg_segmenter"] = os.path.join(STATIC_FOLDER,
                                                 "Models",
                                                 "bg_segmenter.pickle")
-
+STATIC_MODELS["maskrcnn"] = os.path.join(
+                                STATIC_FOLDER, 
+                                "Models",
+                                "torch",
+                                "maskrcnn_model.pth"
+                            )
 STATIC_MODELS["detectron2_model"] = os.path.join(STATIC_FOLDER,
                                                 "Models",
                                                 "detectron2",

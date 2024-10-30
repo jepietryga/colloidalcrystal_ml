@@ -1,0 +1,41 @@
+name: Test Python Library
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: [3.9]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Miniconda
+        uses: conda-incubator/setup-miniconda@v2
+        with:
+          auto-activate-base: false
+
+      - name: Create conda environment from environment.yml
+        run: |
+          conda env create -f environment.yml
+          conda activate my_env  # Replace `my_env` with the environment name in your .yml file
+
+
+      - name: Run tests
+        run: |
+          pytest  # Adjust command as needed for your test setup
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-${{ matrix.os }}-python${{ matrix.python-version }}
+          path: ./tests/test-results/

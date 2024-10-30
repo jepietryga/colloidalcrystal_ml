@@ -9,7 +9,7 @@ SEGMENT_METHOD_DROPDOWN_OPTIONS = [
     "Local Threshold",
     "Pixel Classifier",
     "Ensemble",
-    "Detectron2",
+    "MaskRCNN",
     "Segment Anything"
 ]
 

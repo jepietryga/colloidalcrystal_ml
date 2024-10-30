@@ -36,14 +36,14 @@ segment_mode_mapper = {
         "segmenter": AlgorithmicSegmenter,
         "segmenter_kwargs": {"threshold_mode": "ensemble"},
     },
-    "Detectron2": {
+    "MaskRCNN": {
         "segmenter": MaskRCNNSegmenter,
         "segmenter_kwargs": {},
     },
     "Segment Anything": {
         "segmenter": SAMSegmenter,
         "segmenter_kwargs": {
-            "sam_kwargs": {"points_per_side": 64},
+            "sam_kwargs": {"points_per_side": 64, "min_mask_region_area":20},
         },
     },
 }
@@ -298,9 +298,19 @@ def input_arrows(
         Input("labeling_left_arrow", "n_clicks"),
         Input("labeling_right_arrow", "n_clicks"),
     ],
+    state=[
+        State("input_image_div", "children"),
+        State("threshold_image_div", "children"),
+        State("markers_image_div", "children"),
+    ],
     prevent_initial_call=True,
 )
-def labeling_arrows(left_click, right_click):
+def labeling_arrows(left_click, 
+                    right_click,
+                    iid,
+                    tid,
+                    mid
+                    ):
     if len(state.images) == 0:
         return [iid, tid, mid]
 
@@ -355,7 +365,8 @@ def run_app():
     """
     Simple script for running the dash_app
     """
-    app.run_server(host="0.0.0.0", port=8050, debug=True)
+    # app.run_server(host="0.0.0.0", port=8050, debug=True)
+    app.run_server( port=8050, debug=True)
 
 
 if __name__ == "__main__":

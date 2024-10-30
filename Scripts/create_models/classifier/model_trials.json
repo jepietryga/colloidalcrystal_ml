@@ -1,0 +1,18 @@
+{
+    "original_default_features":{
+        "model_params":"original",
+        "features":"default_features"
+    },
+    "original_default_features-facet_score":{
+        "model_params":"original",
+        "features":"default_features-facet_score"
+    },
+    "original_default_features-facet_score-agnostic":{
+        "model_params":"original",
+        "features":"default_features-facet_score-agnostic"
+    },
+    "original_default_features-agnostic":{
+        "model_params":"original",
+        "features":"default_features-agnostic"
+    }
+}

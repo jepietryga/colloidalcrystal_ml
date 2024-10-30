@@ -17,9 +17,19 @@ facet_ml/static/Models/sam_vit_l_0b3195.pth
 Models
 *.pth
 
-# Most png are not necessary
+# Most images are not necessary
 *.jpg
 *.png
 *.h5
-*.pyc*
+*.tif
+*.bmp
+*.jpeg
 
+# Most data streams are not necessary
+*.pyc*
+*.csv
+*.zip
+
+# Likely do not need to incorporate ProcessedData
+ProcessedData
+Manuscript

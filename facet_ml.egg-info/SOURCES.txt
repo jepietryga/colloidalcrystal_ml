@@ -1,6 +1,6 @@
 README.md
 pyproject.toml
-facet_ml/__init_.py
+facet_ml/__init__.py
 facet_ml.egg-info/PKG-INFO
 facet_ml.egg-info/SOURCES.txt
 facet_ml.egg-info/dependency_links.txt

@@ -1,0 +1,14 @@
+{
+    "original_default_features":{
+        "model_params":"original",
+        "features":"default_features"
+    },
+    "original_default_features-agnostic":{
+        "model_params":"original",
+        "features":"default_features-agnostic"
+    },
+    "original_2024_features-agnostic":{
+        "model_params":"original",
+        "features":"2024_features-agnostic"
+    }
+}

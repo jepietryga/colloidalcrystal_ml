@@ -69,12 +69,23 @@ class Region:
 
     @classmethod
     def from_image_and_mask(cls, image: np.ndarray, mask: np.ndarray):
+        '''
+        Given the mask (2D bool) of an image, get only the region from the image
+        Args:
+            image (np.ndarray) : Full image
+            mask (np.ndarray) : Boolean logical of just the region of interest
+        '''
         input_region = copy.deepcopy(image)
         input_region[~mask] = 0
         return cls(input_region)
 
     @classmethod
     def from_image_markers_num(cls, image: np.ndarray, markers: np.ndarray, num: int):
+        '''
+        Given an image and its corresponding markers, keep the mask of only the corresponding marker
+        Args:
+            image (np.ndarray)
+        '''
         mask = markers == num
         input_region = copy.deepcopy(image)
         input_region[~mask] = 0
@@ -93,6 +104,9 @@ class AverageCurvatureFeaturizer(BaseRegionFeaturizer):
     ):
         """
         Get the average curvature values for a region
+        Args:
+            min_contour_length (int) : Pixel length of perimeter for a contour to be considered as a contour; filters noise
+            window_size_ratio (float) : Size of total perimeter window to consider when looing at a region
         """
         self.min_contour_length = min_contour_length
         self.window_size_ratio = window_size_ratio
@@ -121,6 +135,9 @@ class MaxCurvatureFeaturizer(BaseRegionFeaturizer):
         """
         Get the maximum curvature values for a region
         Motivation: A well-faceted crystal should have no extreme convexity values
+        Args:
+            min_contour_length (int) : Pixel length of perimeter for a contour to be considered as a contour; filters noise
+            window_size_ratio (float) : Size of total perimeter window to consider when looing at a region
         """
         self.min_contour_length = min_contour_length
         self.window_size_ratio = window_size_ratio
@@ -153,6 +170,9 @@ class MinCurvatureFeaturizer(BaseRegionFeaturizer):
         """
         Get the minimum curvature values for a region
         Motivation: A well-faceted crystal should have no extreme concavity values
+        Args:
+            min_contour_length (int) : Pixel length of perimeter for a contour to be considered as a contour; filters noise
+            window_size_ratio (float) : Size of total perimeter window to consider when looing at a region
         """
         self.min_contour_length = min_contour_length
         self.window_size_ratio = window_size_ratio
@@ -184,8 +204,11 @@ class StdCurvatureFeaturizer(BaseRegionFeaturizer):
     ):
         """
         Get the standard deviation of curvature values for a region
-        Motivation: A well-faceted crystal should ben early bimodal and thus have some std
+        Motivation: A well-faceted crystal should be nearly bimodal and thus have some std
                     Too much is suspicious, though
+        Args:
+            min_contour_length (int) : Pixel length of perimeter for a contour to be considered as a contour; filters noise
+            window_size_ratio (float) : Size of total perimeter window to consider when looing at a region
         """
         self.min_contour_length = min_contour_length
         self.window_size_ratio = window_size_ratio
@@ -219,6 +242,10 @@ class PercentConvexityCurvatureFeaturizer(BaseRegionFeaturizer):
         """
         Get the % of a region that is convex
         Motivation: Crystals should be nearly 100% convex, with lower convexity implying more divets
+        Args:
+            min_contour_length (int) : Pixel length of perimeter for a contour to be considered as a contour; filters noise
+            window_size_ratio (float) : Size of total perimeter window to consider when looing at a region
+            curvature_offset (float) : Curvature thresholding value for convexity vs. concavity.
         """
         self.min_contour_length = min_contour_length
         self.window_size_ratio = window_size_ratio
@@ -258,6 +285,10 @@ class LongestContiguousConvexityCurvatureFeaturizer(BaseRegionFeaturizer):
         """
         Get the longest contiguous % of a region that is convex
         Motivation: Larger convex paths regular shapes, more crystalline
+        Args:
+            min_contour_length (int) : Pixel length of perimeter for a contour to be considered as a contour; filters noise
+            window_size_ratio (float) : Size of total perimeter window to consider when looing at a region
+            curvature_offset (float) : Curvature thresholding value for convexity vs. concavity.
 
         """
         self.min_contour_length = min_contour_length
@@ -303,6 +334,10 @@ class LongestContiguousConcavityCurvatureFeaturizer(BaseRegionFeaturizer):
         """
         Get the longest contiguous % of a region that is convex
         Motivation: Larger concave paths imply larger irregular divets, less crystal-like
+        Args:
+            min_contour_length (int) : Pixel length of perimeter for a contour to be considered as a contour; filters noise
+            window_size_ratio (float) : Size of total perimeter window to consider when looing at a region
+            curvature_offset (float) : Curvature thresholding value for convexity vs. concavity.
         """
         self.min_contour_length = min_contour_length
         self.window_size_ratio = window_size_ratio
@@ -347,6 +382,10 @@ class DistinctPathsCurvatureFeaturizer(BaseRegionFeaturizer):
         """
         Get the # paths needed to describe concavity and convexity
         Motivation: More paths needed implies stranger shapes, less likely a crystal
+        Args:
+            min_contour_length (int) : Pixel length of perimeter for a contour to be considered as a contour; filters noise
+            window_size_ratio (float) : Size of total perimeter window to consider when looing at a region
+            curvature_offset (float) : Curvature thresholding value for convexity vs. concavity.
         """
         self.min_contour_length = min_contour_length
         self.window_size_ratio = window_size_ratio
@@ -382,6 +421,7 @@ def get_region_curvatures(
     Original code from: https://medium.com/@stefan.herdy/compute-the-curvature-of-a-binary-mask-in-python-5087a88c6288
 
     Args:
+        region (Region) : Region of interest to look at
         min_contour_length (int) : From the ffound contours, it must be at least this size
         window_size_ratio (float) : Ratio of how much % curve is a pixel's neighborhood for curvature calc
     """
@@ -438,6 +478,8 @@ def get_region_curvatures(
 def compute_curvature(point, i, contour, window_size):
     """
     Compute the curvature using polynomial fitting in a local coordinate system
+
+    Original code from: https://medium.com/@stefan.herdy/compute-the-curvature-of-a-binary-mask-in-python-5087a88c6288
 
     Args:
         point (tuple): (x,y) tuple of a point
@@ -496,6 +538,10 @@ def find_contiguous_curvatures(
     """
     Find the stretches of pixels that are above or below 0 (convex or concave)
     Use offset to include or disclude straightaways in the curvature
+    Args:
+            edge_pixels (np.ndarray) : Pixels associated w/ just pixels from region edge
+            window_size_ratio (float) : Value of curvatures assocaited w/ Edge Pixels
+            curvature_offset (float) : Curvature thresholding value for convexity vs. concavity.
     """
 
     convex_logical = curvature_values >= curvature_offset
@@ -535,6 +581,7 @@ def find_contiguous_curvatures(
 
 def facet_score(image_segmenter):
     """
+    TESTING FEATURE
     This function will add another column onto the image_segmenter's df
     This column will be the feature "facet_score" defined by
     (# Edge pixels in region)/(# Pixels in Region)*radial_equivalent
@@ -566,7 +613,6 @@ def facet_score(image_segmenter):
         )  # Approximation
         return (edge_score / area) * r_equivalent
 
-    print(len(df))
     df["facet_score"] = df.apply(row_facet_score, axis=1)
 
 
@@ -574,8 +620,12 @@ def merge_new_features(df_left, df_right, feature_to_merge, columns_to_merge_on)
     """
     The goal of this is to merge feature_to_merge from df_right into df_left
     This requires that both df have their columns to merge on identical
+    Args:
+        df_left (pd.DataFrame) : Dataframe to merge onto
+        df_right (pd.DataFrame) : Dataframe being merged from
+        feature_to_merge (str) : Feature to merge onto
+        columns_to_merge_on (list[str]) : Keys to merge onto to ensure commensurate dataframes. Usually index 
     """
     df_right_reduced = df_right[[feature_to_merge, *columns_to_merge_on]]
     df_adjusted = pd.merge(left=df_left, right=df_right_reduced, on=columns_to_merge_on)
     return df_adjusted
-    raise NotImplemented
