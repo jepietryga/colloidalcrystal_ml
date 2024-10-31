@@ -50,6 +50,7 @@ key_list = [  # "C-MC_I-P",
 f1_dict = {}
 
 for trial_name, param_dict in model_trials.items():
+    print(trial_name)
     for key in key_list:
         list_labels = df_total.Labels.unique()
 
@@ -58,14 +59,28 @@ for trial_name, param_dict in model_trials.items():
                 (["C", "MC"], "Crystalline"),
                 (["I", "P"], "Not Crystalline"),
             ]
+            replace_list = {
+                "C":"Crystalline",
+                "MC":"Crystalline",
+                "I":"Not Crystalline",
+                "P":"Not Crystalline"
+            }
             labels = ["Crystalline", "Not Crystalline"]
 
         if key == "C_MC":
             replace_list = [("C", "Crystal"), ("MC", "Multiple Crystal")]
+            replace_list = {
+                "C":"Crystal",
+                "MC":"Multiple Crystal"
+            }
             labels = ["Crystal", "Multiple Crystal"]
 
         if key == "I_P":
             replace_list = [("I", "Incomplete"), ("PS", "Poorly Segmented")]
+            replace_list = {
+                "I":"Incomplete",
+                "P":"Poorly Segmented"
+            }
             labels = ["Incomplete", "Poorly Segmented"]
 
         if key == "C_MC-I-P":
@@ -78,6 +93,11 @@ for trial_name, param_dict in model_trials.items():
                 ("MC", "Multiple Crystal"),
                 ("I", "Incomplete"),
             ]
+            replace_list = {
+                "C":"Crystal",
+                "MC":"Multiple Crystal",
+                "I":"Incomplete"
+            }
 
             labels = ["Crystal", "Multiple Crystal", "Incomplete"]
 

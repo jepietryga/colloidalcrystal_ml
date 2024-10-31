@@ -67,13 +67,14 @@ parent_image_dir_list.append(
 ## Load Features
 features = load_feature_config("default_features-agnostic")
 # features = load_feature_config("default_features")
-# features = load_feature_config("2024_features-agnostic")
+features = load_feature_config("2024_features-agnostic")
 
 ## Load Models
 model_set = "2024_02__original_default_features-agnostic"
 # model_set = "2024_02__original_default_features"
 model_set = "2023_original_default_features-agnostic"  # Best sent RC's way
 # model_set = "2024_02__original_2024_features-agnostic"
+model_set = "2024_08__original_2024_features-agnostic"
 model_folder = os.path.join(
     Path(__file__).parent.parent, "facet_ml", "static", "Models", model_set
 )
@@ -102,7 +103,7 @@ for parent_image_dir in parent_image_dir_list:
 
     ## Define Save Path
     save_id = Path(parent_image_dir).stem
-    results_path = f"../Results/{save_id}_{threshold_mode}"
+    results_path = f"../Results_2024_10/{save_id}_{threshold_mode}"
 
     for image_folder in image_folders:
         image_list = glob.glob(os.path.join(image_folder, "*"))
@@ -134,6 +135,7 @@ for parent_image_dir in parent_image_dir_list:
             img_path = os.path.join(save_folder, f"{image_name}_visualiation.png")
 
             # Save
+            print(save_folder)
             cv2.imwrite(img_path, cv2.cvtColor(color_img, cv2.COLOR_BGR2RGB))
             IS.df.to_csv(csv_path)
 

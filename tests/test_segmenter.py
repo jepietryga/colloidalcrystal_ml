@@ -20,7 +20,7 @@ def test_segmenter_AlgorithmicSegmenter():
             im = AS.markers_filled
 
             plt.imshow(im)
-            plt.savefig(f"{th_mode}_{em_mode}.png")
+            # plt.savefig(f"{th_mode}_{em_mode}.png")
     
 def test_segmenter_MaskRCNNSegmenter():
 
@@ -28,14 +28,14 @@ def test_segmenter_MaskRCNNSegmenter():
     if not os.path.exists(STATIC_MODELS["maskrcnn"]):
         raise Exception("Test Incomplete: Model not available")
     
-    MS = segmenter.MaskRCNNSegmenter(test_image)
+    MS = segmenter.MaskRCNNSegmenter(test_image,device="cpu")
     im = MS.markers_filled
     plt.imshow(im)
     # plt.savefig("MaskRCNNSegmenter.png")
     #raise NotImplemented
 
 def test_segmenter_SAMSegmenter():
-    SS = segmenter.SAMSegmenter(test_image)
+    SS = segmenter.SAMSegmenter(test_image,device="cpu")
     im = SS.markers_filled
     plt.imshow(im)
     # plt.savefig("SamSegmenter.png")

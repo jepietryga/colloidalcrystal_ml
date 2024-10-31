@@ -330,6 +330,7 @@ class SAMSegmenter(AbstractSegmenter):
         device: str = None,
         sam_kwargs: dict = {
             "points_per_side": 64, 
+            "min_mask_region_area":20
                             },
     ):
         """
