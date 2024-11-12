@@ -6,9 +6,11 @@ from torch import nn
 from torchvision.io import read_image
 from torchvision.ops.boxes import masks_to_boxes
 from torchvision import tv_tensors
-from torchvision.transforms.v2 import functional as F
+# from torchvision.transforms.v2 import functional as F
+import torch.nn.functional as F
 from torchvision.transforms import v2 as T
 import torchvision
+from torchvision.models import resnet152
 
 
 from sklearn.model_selection import StratifiedKFold
@@ -23,6 +25,7 @@ from tempfile import TemporaryDirectory
 import os
 import cv2
 from pathlib import Path
+import random
 
 from PIL import Image
 
@@ -225,6 +228,44 @@ def load_colloidal_datasets_h5(
 
     return dataloaders, datasize
 
+transform = T.Compose(
+    [
+        # T.ToPILImage(),  # Convert NumPy array (or tensor) to PIL Image
+        T.RandomHorizontalFlip(p=0.5),  # 50% chance of horizontal flip
+        T.RandomVerticalFlip(p=0.5),  # 50% chance of vertical flip
+        T.RandomRotation(
+            degrees=15
+        ),  # Rotate the image randomly between -15 and +15 degrees
+        # Unclear how these transforms impact the mask
+        # T.ColorJitter(
+        #     brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
+        # ),  # Random color jitter
+        # T.RandomResizedCrop(
+        #     size=(256, 256), scale=(0.8, 1.0)
+        # ),  # Resize and randomly crop
+        # T.GaussianBlur(
+        #     kernel_size=3, sigma=(0.1, 2.0)
+        # ),  # Apply Gaussian blur with random sigma
+        T.ToTensor(),  # Convert PIL image back to tensor
+    ]
+    )
+class CustomTransform:
+    def __init__(self):
+        self.transform = transform
+
+    def __call__(self, img, mask):
+
+        # img = T.ToPILImage()(img.to(torch.uint8))
+        mask = T.ToPILImage()(mask.to(torch.uint8))
+
+        seed = random.randint(0, 2**32)
+        torch.manual_seed(seed)
+        img = self.transform(img)
+        
+        torch.manual_seed(seed)
+        mask = self.transform(mask)
+        
+        return img, mask
 
 def load_colloidal_datasets_coco(
     parent_dir: str,
@@ -232,45 +273,28 @@ def load_colloidal_datasets_coco(
     testing_dir: str = "test",
     num_workers: int = 8,
     batch_size: int = 2,
+    mark_edges: bool = False
 ):
     """
     Use the COCO data to train CNN background-foreground pixel classifier
     """
 
     # Heavy augmentation is needed
-    transform = T.Compose(
-        [
-            T.ToPILImage(),  # Convert NumPy array (or tensor) to PIL Image
-            T.RandomHorizontalFlip(p=0.5),  # 50% chance of horizontal flip
-            T.RandomVerticalFlip(p=0.5),  # 50% chance of vertical flip
-            T.RandomRotation(
-                degrees=15
-            ),  # Rotate the image randomly between -15 and +15 degrees
-            # Unclear how these transforms impact the mask
-            # T.ColorJitter(
-            #     brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
-            # ),  # Random color jitter
-            # T.RandomResizedCrop(
-            #     size=(256, 256), scale=(0.8, 1.0)
-            # ),  # Resize and randomly crop
-            # T.GaussianBlur(
-            #     kernel_size=3, sigma=(0.1, 2.0)
-            # ),  # Apply Gaussian blur with random sigma
-            T.ToTensor(),  # Convert PIL image back to tensor
-        ]
-    )
+    
 
     dataset_train = CocoColloidalDataset(
         root=os.path.join(parent_dir, training_dir),
         annotation_file=os.path.join(
             parent_dir, training_dir, "_annotations.coco.json"
         ),
-        transforms=transform,
+        transforms=CustomTransform(),
+        mark_edges=mark_edges
     )
     dataset_test = CocoColloidalDataset(
         root=os.path.join(parent_dir, testing_dir),
         annotation_file=os.path.join(parent_dir, testing_dir, "_annotations.coco.json"),
-        transforms=transform,
+        transforms=CustomTransform(),
+        mark_edges=mark_edges
     )
 
     dataloader_train = torch.utils.data.DataLoader(
@@ -314,81 +338,56 @@ class DoubleConv(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes):
+    def __init__(self, n_channels, n_classes,
+                 features:list = [64, 128, 256, 512],
+                 dim=256):
         super(UNet, self).__init__()
         self.n_channels = n_channels
-        self.n_classes = n_classes
+        self.n_classes = n_classes  
+        self.ups = nn.ModuleList()
+        self.downs = nn.ModuleList()
+        self.pool = nn.MaxPool2d(kernel_size=2,stride=2)
 
-        self.inc = DoubleConv(n_channels, 64)
-        self.down1 = nn.Sequential(nn.MaxPool2d(2), DoubleConv(64, 128))
-        self.down2 = nn.Sequential(nn.MaxPool2d(2), DoubleConv(128, 256))
-        self.down3 = nn.Sequential(nn.MaxPool2d(2), DoubleConv(256, 512))
-        self.down4 = nn.Sequential(nn.MaxPool2d(2), DoubleConv(512, 512))
-        self.up1 = nn.Sequential(
-            nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2), DoubleConv(512, 256)
-        )
-        self.up2 = nn.Sequential(
-            nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2), DoubleConv(256, 128)
-        )
-        self.up3 = nn.Sequential(
-            nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2), DoubleConv(128, 64)
-        )
-        self.up4 = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2), DoubleConv(64, 32)
-        )
-        self.outc = nn.Conv2d(32, n_classes, kernel_size=1)
+        # Build downs
+        pre_feat = n_channels
+        for feature in features:
+            self.downs.append(SegDoubleConv(pre_feat,feature) )
+            pre_feat = feature
+
+        for feature in reversed(features):
+            self.ups.append(nn.ConvTranspose2d(
+                    feature*2, feature, kernel_size=2, stride=2
+                ))
+            self.ups.append(SegDoubleConv(feature*2,feature))
+
+        self.bottom = SegDoubleConv(features[-1],features[-1]*2)
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((dim, dim))
+        self.outc = nn.Conv2d(features[0], self.n_classes, kernel_size=1)
 
     def forward(self, x):
-        x1 = self.inc(x)
-        x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
-        x5 = self.down4(x4)
-        x = self.up1(
-            torch.cat(
-                [
-                    x4,  # 512
-                    F.interpolate(
-                        x5, x4.size()[2:], mode="bilinear", align_corners=True
-                    ),
-                ],  # Total: 1024
-                dim=1,
-            )
-        )
-        x = self.up2(
-            torch.cat(
-                [
-                    x3,
-                    F.interpolate(
-                        x, x3.size()[2:], mode="bilinear", align_corners=True
-                    ),
-                ],
-                dim=1,
-            )
-        )
-        x = self.up3(
-            torch.cat(
-                [
-                    x2,
-                    F.interpolate(
-                        x, x2.size()[2:], mode="bilinear", align_corners=True
-                    ),
-                ],
-                dim=1,
-            )
-        )
-        x = self.up4(
-            torch.cat(
-                [
-                    x1,
-                    F.interpolate(
-                        x, x1.size()[2:], mode="bilinear", align_corners=True
-                    ),
-                ],
-                dim=1,
-            )
-        )
+        skip_connections = []
+
+        # Down
+        for down in self.downs:
+            x = down(x)
+            skip_connections.append(x)
+            x = self.pool(x)
+
+        # Bottom
+        x = self.bottom(x)
+        skip_connections = skip_connections[::-1]
+
+        # Up range(len(self.ups)):#
+        for ii in range(0, len(self.ups), 2):
+
+            x = self.ups[ii](x)
+            skip_connection = skip_connections[ii // 2]
+            concat_skip = torch.cat((skip_connection, x), dim=1)
+            x = self.ups[ii+1](concat_skip)
+        
         logits = self.outc(x)
+        logits = F.interpolate(logits, size=(256, 256), mode="bilinear", align_corners=True)
+
         logits = F.adaptive_avg_pool2d(
             logits, 1
         )  # Global average pooling to convert to class scores
@@ -397,14 +396,14 @@ class UNet(nn.Module):
         return logits
 
 
-### U-Net for segmentation ###
+### U-Net for semantic segmentation ###
 class SegDoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(SegDoubleConv, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels, out_channels, 3, 1, 1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.Conv2d(out_channels, out_channels, 3, 1, 1),
             nn.ReLU(inplace=True),
         )
 
@@ -412,97 +411,71 @@ class SegDoubleConv(nn.Module):
         return self.conv(x)
 
 class SegUNet(nn.Module):
-    def __init__(self, n_channels, dim=256):
+    '''
+    Functionally, this is identical to UNet but changes to do pixel classification instead of
+    region classification.
+    '''
+    def __init__(self, n_channels, 
+                 n_classes=2, 
+                 dim=256,
+                 features:list = [64, 128, 256, 512]
+                 ):
         super(SegUNet, self).__init__()
         self.n_channels = n_channels
-        self.n_classes = 1  # Binary
+        self.n_classes = n_classes  # Binary
+        self.ups = nn.ModuleList()
+        self.downs = nn.ModuleList()
+        self.pool = nn.MaxPool2d(kernel_size=2,stride=2)
 
-        self.inc = SegDoubleConv(n_channels, 64)
-        self.down1 = nn.Sequential(nn.MaxPool2d(2), SegDoubleConv(64, 128))
-        self.down2 = nn.Sequential(nn.MaxPool2d(2), SegDoubleConv(128, 256))
-        self.down3 = nn.Sequential(nn.MaxPool2d(2), SegDoubleConv(256, 512))
-        self.down4 = nn.Sequential(nn.MaxPool2d(2), SegDoubleConv(512, 512))
-        self.up1 = nn.Sequential(
-            nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2),
-            SegDoubleConv(512, 256),
-        )
-        self.up2 = nn.Sequential(
-            nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2),
-            SegDoubleConv(256, 128),
-        )
-        self.up3 = nn.Sequential(
-            nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2),
-            SegDoubleConv(128, 64),
-        )
-        self.up4 = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2), SegDoubleConv(64, 32)
-        )
+        # Build downs
+        pre_feat = n_channels
+        for feature in features:
+            self.downs.append(SegDoubleConv(pre_feat,feature) )
+            pre_feat = feature
+
+        for feature in reversed(features):
+            self.ups.append(nn.ConvTranspose2d(
+                    feature*2, feature, kernel_size=2, stride=2
+                ))
+            self.ups.append(SegDoubleConv(feature*2,feature))
+
+        self.bottom = SegDoubleConv(features[-1],features[-1]*2)
         self.adaptive_pool = nn.AdaptiveAvgPool2d((dim, dim))
-        self.outc = nn.Conv2d(32, self.n_classes, kernel_size=1)
+        self.outc = nn.Conv2d(features[0], self.n_classes, kernel_size=1)
 
     def forward(self, x):
-        s = lambda t: t.shape
-        x1 = self.inc(x)
-        x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
-        x5 = self.down4(x4)
-        x = self.up1(
-            torch.cat(
-                [
-                    x4,  # 512
-                    F.interpolate(
-                        x5, x4.size()[2:], mode="bilinear", align_corners=True
-                    ),
-                ],  # Total: 1024
-                dim=1,
-            )
-        )
-        s(x4)
-        s(x5)
-        s(x)
-        x = self.up2(
-            torch.cat(
-                [
-                    x3,
-                    F.interpolate(
-                        x, x3.size()[2:], mode="bilinear", align_corners=True
-                    ),
-                ],
-                dim=1,
-            )
-        )
-        s(x)
-        x = self.up3(
-            torch.cat(
-                [
-                    x2,
-                    F.interpolate(
-                        x, x2.size()[2:], mode="bilinear", align_corners=True
-                    ),
-                ],
-                dim=1,
-            )
-        )
-        s(x)
-        x = self.up4(
-            torch.cat(
-                [
-                    x1,
-                    F.interpolate(
-                        x, x1.size()[2:], mode="bilinear", align_corners=True
-                    ),
-                ],
-                dim=1,
-            )
-        )
-        s(x)
-        x = self.adaptive_pool(x)
+        skip_connections = []
+
+        # Down
+        for down in self.downs:
+            x = down(x)
+            skip_connections.append(x)
+            x = self.pool(x)
+
+        # Bottom
+        x = self.bottom(x)
+        skip_connections = skip_connections[::-1]
+
+        # Up range(len(self.ups)):#
+        for ii in range(0, len(self.ups), 2):
+            x = self.ups[ii](x)
+            skip_connection = skip_connections[ii // 2]
+            concat_skip = torch.cat((skip_connection, x), dim=1)
+            x = self.ups[ii+1](concat_skip)
+        
         logits = self.outc(x)
+
+        logits = self.outc(x)
+        logits = F.interpolate(logits, size=(256, 256), mode="bilinear", align_corners=True)
+
+        # # logits = F.adaptive_avg_pool2d(
+        # #     logits, 1
+        # # )  # Global average pooling to convert to class scores
+        # # logits = logits.view(logits.size(0), -1)  # Flatten to (batch_size, n_classes)
+
 
         # Apply softmax activation to get class probabilities
         return logits
-
 
 def train_model(
     model,
@@ -543,9 +516,6 @@ def train_model(
 
                 # Iterate over data.
                 for inputs, labels in dataloaders[phase]:
-                    # inputs = torch.tensor(inputs)
-                    # labels = torch.tensor(labels)
-                    # print(inputs.shape, labels.shape)
                     inputs = inputs.to(device)
                     labels = labels.to(device)
 
@@ -556,9 +526,16 @@ def train_model(
                     # track history if only in train
                     with torch.set_grad_enabled(phase == "train"):
                         outputs = model(inputs)
-                        _, preds = torch.max(outputs, 1)
-                        # print("Outputs and Preds", outputs.shape, preds.shape)
-                        loss = criterion(outputs, labels)
+                        _, preds = torch.max(outputs,1)
+                        preds = torch.argmax(outputs,1)
+                        if isinstance(model,UNet) or isinstance(model,type(resnet152())):
+                            loss = criterion(outputs,labels)
+                        elif isinstance(model,SegUNet):
+                            labels = labels.squeeze(1)
+                            loss = criterion(outputs, labels)
+                        else:
+                            raise Exception(f"{type(model)} not supported in this function")
+                        # exit()
 
                         # backward + optimize only if in training phase
                         if phase == "train":
@@ -648,10 +625,7 @@ def train_model_coco(
                     with torch.set_grad_enabled(phase == "train"):
                         outputs = model(inputs)
                         _, preds = torch.max(outputs, 1)
-                        print("Outputs and Preds", outputs.shape, preds.shape)
-                        # print(list(zip(outputs, preds)))
                         loss = criterion(outputs, labels)
-                        print(loss)
 
                         # backward + optimize only if in training phase
                         if phase == "train":
@@ -818,7 +792,7 @@ class CocoColloidalDataset(Dataset):
     This dataset is intended to be used w/ Coco labeled data
     """
 
-    def __init__(self, root, annotation_file, patch_size=(256, 256), transforms=None):
+    def __init__(self, root, annotation_file, patch_size=(256, 256), transforms=None,mark_edges=False):
         """
         Args:
             root (string): Root directory where images are stored.
@@ -830,6 +804,7 @@ class CocoColloidalDataset(Dataset):
         self.transforms = transforms
         self.patch_size = patch_size
         self.annotation_file = annotation_file
+        self.mark_edges = mark_edges
 
         # Load annotations
         with open(annotation_file, "r") as f:
@@ -887,19 +862,22 @@ class CocoColloidalDataset(Dataset):
             empty = np.zeros(image.shape[:2], np.int16)
             edges = np.zeros(image.shape[:2], np.int16)
             for ii, ann in enumerate(annotations):
+                
                 fill_val = int(
                     ann["category_id"] != 2
                 )  # 4 should be background, but make this more explicit later
                 polygon = np.array(ann["segmentation"], dtype=np.int32).reshape(-1, 2)
                 mask = cv2.fillPoly(mask, [polygon], fill_val)
-                if fill_val:
+
+                if self.mark_edges and fill_val:
+
                     temp_poly = cv2.fillPoly(empty, [polygon], fill_val)
-                    expand_poly = cv2.dilate(temp_poly, np.ones((3, 3)), iterations=1)
-                    shrink_poly = cv2.erode(temp_poly, np.ones((3, 3)), iterations=1)
+                    expand_poly = cv2.dilate(temp_poly, np.ones((5, 5)), iterations=1)
+                    shrink_poly = cv2.erode(temp_poly, np.ones((5, 5)), iterations=1)
                     edge = cv2.subtract(expand_poly, shrink_poly)
                     edges = cv2.add(edges, edge)
-            unique, counts = np.unique(mask, return_counts=True)
-            print(np.asarray((unique, counts)).T)
+            if self.mark_edges:
+                mask[edges > 1] = 2
             imgs = []
             masks = []
             if self.patch_size is not None:
@@ -938,11 +916,14 @@ class CocoColloidalDataset(Dataset):
 
         # Convert NumPy array to PIL Image
         img = Image.fromarray(img)
+        # img = torch.tensor(img)
 
         # Convert mask to tensor
+        # mask = Image.fromarray(mask,"L") #torch.tensor(mask, dtype=torch.long)
         mask = torch.tensor(mask, dtype=torch.long)
-
         if self.transforms:
-            mask, img = self.transforms([mask, img])
+            img, mask = self.transforms(img, mask)
+        mask = torch.ceil(mask*255)
+        mask = mask.long()
 
         return img, mask

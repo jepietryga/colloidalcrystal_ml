@@ -25,6 +25,9 @@ Models
 *.bmp
 *.jpeg
 
+# Include images in the tutorials section
+!Tutorials\Images\*.bmp
+
 # Most data streams are not necessary
 *.pyc*
 *.csv
