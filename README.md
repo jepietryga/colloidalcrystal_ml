@@ -22,6 +22,8 @@ Additionally, code for helping train and utilize RandomForest classification mod
 
 To quickly access the assisted labeling applet, just write `dash_applet` in the terminal and follow its instructions.
 
+# Data and Models
+Processed data and models are shared via <a href="https://doi.org/10.5281/zenodo.14019586">Zenodo</a>. There is room for further optimization of models, but those used in the linked paper's data analysis are kept for reproducibility and transparency.
 
 # Citing
 If you found this codebase to be useful, it is helpful to cite the paper!
