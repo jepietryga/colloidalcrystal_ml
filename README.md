@@ -6,22 +6,26 @@ The main use of this repository is to access the ImageSegmenter class as it allo
 Additionally, code for helping train and utilize RandomForest classification models is also included.
 
 # How to install
-Use 
-```
-git clone https://github.com/jepietryga/colloidal_crystal_ML.git
-```
 
-or follow other methods with SSH or CLI!
-
-After that, you may use the requirements.txt file inside a virtual environment to ensure you have the correct libraries.
-
+<ol>
+<li> Get the repository using <code>git clone https://github.com/jepietryga/colloidal_crystal_ML.git</code>. </li>
+<li> Install dependencies using <code>conda env create -f environment.yml</code>.</li>
+<li> Install the library using <code>pip install -e ./</code>. The editable version is the easiest to move models into</li>
+<li> Navigate to <code>./facet_ml/static/Models</code> and follow instructions in its README.md to download models from Zenodo.
+</ol>
 
 # How to use
 
 `facet_ml` holds the main body of code, which includes code for segmenters, models, and utility scripts for handling images as well as the applet code.
 
-`Tutorials` holds notebook and script files that walkthrough usage of some of the code. This includes segmentation, classification, and data viewing.
+`Tutorials` holds notebook and script files that walkthrough usage of some of the code. This includes segmentation, classifier training, and data viewing.
+
+To quickly access the assisted labeling applet, just write `dash_applet` in the terminal and follow its instructions.
 
 
 # Citing
+If you found this codebase to be useful, it is helpful to cite the paper!
 This code is being developed for a yet unpublished paper. Information will be attached at a later date.
+
+# Issues and Additions
+The codebase is developing as research needs change. Please raise an issue if something is not working as intended, and feel free to recommended new methods!
