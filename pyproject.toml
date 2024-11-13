@@ -2,17 +2,14 @@
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages=['facet_ml']
-
-[metadata]
-name = 'facet_ml'
-version = '0.2.0'
-
 [project]
-name = 'facet_ml'
-version = '0.2.0'
+name = "facet_ml"
+version = "0.2.0"
 
 [project.scripts]
 qt_applet = "facet_ml.applet.app_main:run_app"
 dash_applet = "facet_ml.applet.dash_main:run_app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["facet_ml", "facet_ml.*"]

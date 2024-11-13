@@ -13,8 +13,14 @@ git clone https://github.com/jepietryga/colloidal_crystal_ML.git
 
 or follow other methods with SSH or CLI!
 
-After that, you may use the requirements.txt file inside a virtual environment to ensure you have the correct libraries.
+After that, you may use the environments.yml file inside a virtual environment to ensure you have the correct libraries. Install this with:
+<code>conda env create -f environment.yml</code>
 
+It is recommended to install with
+```
+pip install -e ./
+```
+to ease adding in Models and modifying code.
 
 # How to use
 
