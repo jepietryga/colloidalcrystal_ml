@@ -27,6 +27,7 @@ Models
 
 # Include images in the tutorials section
 !Tutorials/Images/*.bmp
+!tests/*.bmp
 
 # Most data streams are not necessary
 *.pyc*
