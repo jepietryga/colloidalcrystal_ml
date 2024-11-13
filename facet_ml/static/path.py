@@ -16,7 +16,7 @@ STATIC_MODELS["maskrcnn"] = os.path.join(
                                 STATIC_FOLDER, 
                                 "Models",
                                 "torch",
-                                "maskrcnn_model_state_dict.pth"
+                                "maskrcnn_model.pth"
                             )
 STATIC_MODELS["detectron2_model"] = os.path.join(STATIC_FOLDER,
                                                 "Models",

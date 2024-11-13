@@ -255,8 +255,9 @@ class MaskRCNNSegmenter(AbstractSegmenter):
         import torch
 
         model_path = STATIC_MODELS["maskrcnn"]
-        self.model = mask_rcnn.get_model_instance_segmentation(2)
-        self.model.load_state_dict(torch.load(model_path))
+        # self.model = mask_rcnn.get_model_instance_segmentation(2)
+        # self.model.load_state_dict(torch.load(model_path,map_location=torch.device("cpu")))
+        self.model = torch.load(model_path,map_location=torch.device("cpu"))
         self.model.eval()
         
         if device is None:
