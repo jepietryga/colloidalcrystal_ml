@@ -9,9 +9,22 @@ test_path = Path(__file__).parent / "4 nM 1.bmp"
 test_image = cv2.imread(str(test_path),0)
 cv2.imwrite("tmp_test.png",test_image)
 
-def test_segmenter_AlgorithmicSegmenter():
+def test_segmenter_AlgorithmicSegmenter_noModels():
 
-    for th_mode in ["otsu","local","pixel","ensemble"]:
+    for th_mode in ["otsu","local"]:
+        for em_mode in [None,"localthresh"]:
+            AS = segmenter.AlgorithmicSegmenter(test_image,
+                                                th_mode,
+                                                em_mode)
+
+            im = AS.markers_filled
+
+            plt.imshow(im)
+            # plt.savefig(f"{th_mode}_{em_mode}.png")
+
+def test_segmenter_AlgorithmicSegmenter_Models():
+
+    for th_mode in ["pixel","ensemble"]:
         for em_mode in [None,"localthresh"]:
             AS = segmenter.AlgorithmicSegmenter(test_image,
                                                 th_mode,
