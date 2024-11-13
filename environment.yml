@@ -1,4 +1,4 @@
-name: ddebug_colloidal_crystal_env
+name: facet_ml_env
 channels:
   - pytorch
   - nvidia
@@ -46,7 +46,6 @@ dependencies:
   - flask-compress=1.13
   - freetype=2.12.1
   - gmpy2=2.1.2
-  - icc_rt=2022.1.0
   - idna=3.4
   - importlib-metadata=7.0.1
   - importlib_metadata=7.0.1
@@ -143,11 +142,7 @@ dependencies:
   - tqdm=4.65.0
   - traitlets=5.14.1
   - typing_extensions=4.9.0
-  - ucrt=10.0.22621.0
   - urllib3=2.1.0
-  - vc=14.2
-  - vc14_runtime=14.38.33130
-  - vs2015_runtime=14.38.33130
   - wcwidth=0.2.13
   - wheel=0.41.2
   - pip:
