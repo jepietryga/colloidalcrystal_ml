@@ -14,8 +14,8 @@ Image_Data_Repository
 facet_ml/static/Models/bg_segmenter.pickle
 facet_ml/static/Models/detectron2/model_final.pth
 facet_ml/static/Models/sam_vit_l_0b3195.pth
-Models
 *.pth
+*.sav
 
 # Most images are not necessary
 *.jpg
@@ -28,6 +28,9 @@ Models
 # Include images in the tutorials section
 !Tutorials/Images/*.bmp
 !tests/*.bmp
+
+# Include model explanations
+!facet_ml/static/Models/README.md
 
 # Most data streams are not necessary
 *.pyc*
