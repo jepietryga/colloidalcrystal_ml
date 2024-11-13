@@ -6,7 +6,7 @@ Images/Additional/Images to rachel (from Yuanwei)/*/
 Results
 
 # Ignore ALL Images... Just download these manually for use
-Images
+./Images
 Image_Data_Repository
 
 
@@ -26,7 +26,7 @@ Models
 *.jpeg
 
 # Include images in the tutorials section
-!Tutorials\Images\*.bmp
+!Tutorials/Images/*.bmp
 
 # Most data streams are not necessary
 *.pyc*
