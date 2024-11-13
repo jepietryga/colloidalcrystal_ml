@@ -27,6 +27,7 @@ from facet_ml.segmentation import edge_modification as em
 from facet_ml.segmentation import thresholding
 from facet_ml.static.path import STATIC_MODELS
 from facet_ml.segmentation import features as feat
+from facet_ml.classification import mask_rcnn
 
 
 from abc import ABC, abstractmethod, abstractproperty
@@ -253,10 +254,11 @@ class MaskRCNNSegmenter(AbstractSegmenter):
 
         import torch
 
-        folder_path = os.path.join(
-            Path(__file__).parent.parent, "static", "Models", "torch"
-        )
         model_path = STATIC_MODELS["maskrcnn"]
+        self.model = mask_rcnn.get_model_instance_segmentation(2)
+        self.model.load_state_dict(torch.load(model_path))
+        self.model.eval()
+        
         if device is None:
             if torch.cuda.is_available():
                 self.device = "cuda"
@@ -267,7 +269,6 @@ class MaskRCNNSegmenter(AbstractSegmenter):
         else:
             self.device = "cpu"
 
-        self.model = torch.load(model_path)
         self.model.to(self.device)
 
     @property
