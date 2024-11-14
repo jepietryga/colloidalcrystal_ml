@@ -5,6 +5,7 @@ import dash_bootstrap_components as dbc
 from PIL import Image
 from io import BytesIO
 import h5py
+from pathlib import Path
 
 import numpy as np
 
@@ -56,7 +57,8 @@ edge_mode_mapper = {
 }
 
 # Create App
-app = Dash(__file__, external_stylesheets=[dbc.themes.LUX])
+app = Dash(__file__, external_stylesheets=[dbc.themes.LUX],
+           assets_folder=str(Path(__file__).parent / "assets"))
 app.layout = dash_divs.get_main_div()
 
 
@@ -71,7 +73,7 @@ class AppState:
 
         # Check cv images
         self.batch_image_segmenter = None
-        self.batch_tracker = None
+        self.batch_tracker = 0
         # self.image_segmenter = None
         self.cv_image = None
         self.file_path = None
@@ -92,7 +94,16 @@ class AppState:
 
     @property
     def image_segmenter(self):
-        return self.batch_image_segmenter[self.batch_tracker]
+        tracker = self.batch_tracker % len(self.images)
+        if self.batch_image_segmenter is None:
+            return None
+        else:
+            return self.batch_image_segmenter[tracker]
+    
+    @property
+    def image(self):
+        tracker = self.batch_tracker % len(self.images)
+        return self.images[tracker]
 
 
 ## Callbacks limited for Navigation and Loading ##
@@ -139,7 +150,11 @@ segmentation_inputs_state = {
 
 
 @callback(
-    output=[Output("input_image_div", "children")],
+    output=[
+        Output("input_image_div", "children",allow_duplicate=True),
+        Output("threshold_image_div", "children", allow_duplicate=True),
+        Output("markers_image_div", "children", allow_duplicate=True),
+    ],
     inputs=dict(list_contents=Input("load_button", "contents")),
     state=dict(list_filenames=State("load_button", "filename")),
     prevent_initial_call=True,
@@ -161,7 +176,13 @@ def get_input_file(list_contents, list_filenames):
     ]
     state.filenames = list_filenames
 
-    return [html.Img(src=list_contents[0], className="processed_image")]
+    # Make a black square to indicate image has been laoded
+    thresh_b64 = dash_helper.np_to_base64( np.zeros(np.shape(state.image)) )
+    markers_b64 = dash_helper.np_to_base64( np.zeros(np.shape(state.image)) )
+    
+    return [html.Img(src=list_contents[0], className="processed_image"),
+        [html.Img(src=thresh_b64, className="processed_image")],
+        [html.Img(src=markers_b64, className="processed_image")]]
     # raise NotImplemented
 
 
@@ -278,9 +299,15 @@ def input_arrows(
     state.batch_tracker = state.batch_tracker % len(state.images)
 
     # Make new image
-    input_b64 = dash_helper.np_to_base64(state.image_segmenter.image_read)
-    thresh_b64 = dash_helper.np_to_base64(state.image_segmenter.thresh)
-    markers_b64 = dash_helper.np_to_base64(state.image_segmenter.markers)
+    input_b64 = dash_helper.np_to_base64(state.image)
+    if state.image_segmenter is not None:
+        thresh_b64 = dash_helper.np_to_base64(state.image_segmenter.thresh)
+        markers_b64 = dash_helper.np_to_base64(state.image_segmenter.markers)
+    else:
+        thresh_b64 = dash_helper.np_to_base64( np.zeros(np.shape(state.image)) )
+        markers_b64 = dash_helper.np_to_base64( np.zeros(np.shape(state.image)) )
+    
+
     return [
         [html.Img(src=input_b64, className="processed_image")],
         [html.Img(src=thresh_b64, className="processed_image")],
@@ -366,7 +393,7 @@ def run_app():
     Simple script for running the dash_app
     """
     # app.run_server(host="0.0.0.0", port=8050, debug=True)
-    app.run_server( port=8050, debug=True)
+    app.run_server( port=8050, debug=True,)
 
 
 if __name__ == "__main__":
