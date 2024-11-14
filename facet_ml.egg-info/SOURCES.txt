@@ -19,7 +19,6 @@ facet_ml/classification/__init__.py
 facet_ml/classification/cnn.py
 facet_ml/classification/data_manipulation.py
 facet_ml/classification/mask_rcnn.py
-facet_ml/classification/model_training copy.py
 facet_ml/classification/model_training.py
 facet_ml/classification/model_using.py
 facet_ml/segmentation/__init__.py

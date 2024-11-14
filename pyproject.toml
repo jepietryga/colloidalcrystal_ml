@@ -9,6 +9,9 @@ version = "0.2.0"
 [project.scripts]
 qt_applet = "facet_ml.applet.app_main:run_app"
 dash_applet = "facet_ml.applet.dash_main:run_app"
+train_rf_model = "facet_ml.classification.model_training:train_model"
+use_rf_model = "facet_ml.classification.model_using:use_model"
+apply_segmenter = "facet_ml.segmentation.segmenter:use_image_segment
 
 [tool.setuptools.packages.find]
 where = ["."]

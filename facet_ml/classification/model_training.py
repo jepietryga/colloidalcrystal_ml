@@ -15,6 +15,7 @@ import pandas as pd
 import copy
 from typing import Union
 
+import argparse
 from pathlib import Path
 
 CONFIG_PATH = os.path.join(Path(__file__).parent,"config_files")
@@ -93,7 +94,8 @@ class ModelTrainer():
         Helper function to get X and y
         '''
         # Filtering
-        self.df = self.df[self.df[self.targets].isin(self.labels)]
+        if self.labels:
+            self.df = self.df[self.df[self.targets].isin(self.labels)]
         self.df = self.df.dropna(subset=self.features + [self.targets])
         self.df = self.df[~self.df[self.features + [self.targets]].isin([np.inf, -np.inf]).any(axis=1)]  # Drop rows with inf
 
@@ -215,3 +217,35 @@ def replace_and_clean_labels_df(df:pd.DataFrame,replace:list,) -> pd.DataFrame:
 
     df_copy.dropna(subset=['Labels'],inplace=True)
     return df_copy
+
+def train_model():
+    '''
+    End point function for running model training
+    '''
+    parser = argparse.ArgumentParser(description="Train a Random Forest model")
+    parser.add_argument("--data-path", type=str, required=True, help="Path to the input data as a .csv")
+    parser.add_argument("--split-frac", type=float, required=True, help="Fraction of data to use for training")
+    parser.add_argument("--output-path", type=str, required=True, help="Path to save the trained model")
+    parser.add_argument("--feature-set", type=str, required=False, default="default_features", help="Configuration features to pull from")
+    parser.add_argument("--labels", type=str, required=False, nargs="+")
+    parser.add_argument("--model-params", type=str, required=False, default="original", help="Configuration to grab for model settings")
+    parser.add_argument("--train-loops", type=int, required=False, default=100, help="Number of iterations to run")
+    
+    args = parser.parse_args()
+
+    df_load = pd.read_csv(args.data_path)
+    myTrainer = ModelTrainer(
+             df_load,
+             model_class=RandomForestClassifier,
+             features="default_features", # Grabs from our "default_features" config file
+             model_params="original", # Grabs from our "original" model_params information for a RandomForest
+             labels=args.labels,
+             n_splits=args.split_frac
+             )
+    
+    myTrainer.best_model_loop(args.train_loops)
+
+    model = myTrainer.best_run_dict["model"]
+
+    with open(args.output_path,"wb") as f:
+        pickle.dump(model,f)

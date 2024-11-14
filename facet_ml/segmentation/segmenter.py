@@ -8,16 +8,13 @@ from skimage import measure, color, io
 import math
 import copy
 import pandas as pd
+import json
 
 import torch
 
 pd.options.mode.chained_assignment = None  # default='warn'
 import os
 from IPython.display import clear_output
-from functools import partial
-from skimage import data, segmentation, feature, future
-from skimage.filters import threshold_local
-from sklearn.ensemble import RandomForestClassifier
 import pickle
 from pathlib import Path
 from typing import Union
@@ -29,7 +26,7 @@ from facet_ml.static.path import STATIC_MODELS
 from facet_ml.segmentation import features as feat
 from facet_ml.classification import mask_rcnn
 
-
+import argparse
 from abc import ABC, abstractmethod, abstractproperty
 
 
@@ -1257,3 +1254,18 @@ def grab_bound(img, mode="top", buffer=0):
             if len(num_list) > 1:
                 return bounded_expansion(xx + buffer, img, 1)
     return -1
+
+
+def use_image_segmenter():
+    parser = argparse.ArgumentParser(description="Use a Image Segmenter model")
+    parser.add_argument("--image-path", type=str, required=True, help="Path to the input data as a .csv")
+    parser.add_argument("--image-segmenter-kwargs", type=str, required=True, help="JSON-style string to access image segmenter kwargs")
+    parser.add_argument("--output-path", type=str, required=True, help="Path to save the data with applied labels as a .csv")
+    
+    args = parser.parse_args()
+
+    params = json.loads(args.image_segmenter_kwargs) if args.image_segmenter_kwargs else {}
+    IS = ImageSegmenter(input_path=args.image_path,
+                   **params
+                   )
+    IS.df.to_csv(args.output_path)

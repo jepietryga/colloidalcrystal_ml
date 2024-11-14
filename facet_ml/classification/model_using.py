@@ -7,6 +7,8 @@ import pandas as pd
 import cv2
 import copy
 
+import argparse
+import pickle
 
 class ModelApplication:
 
@@ -57,8 +59,9 @@ class ModelApplication:
 
     @image.setter
     def image(self, value):
-        self._image = value
-        self.image_segmenter.input_path = self._image
+        if value:
+            self._image = value
+            self.image_segmenter.input_path = self._image
 
     def recursive_replacement(self, df):
         """
@@ -182,3 +185,26 @@ def dilate_logical(array: np.ndarray, dilate_size: int = 1) -> np.ndarray:
         )
 
     return return_array
+
+def use_model():
+    '''
+    Function endpoint for using models
+    '''
+    parser = argparse.ArgumentParser(description="Use a Random Forest model")
+    parser.add_argument("--data-path", type=str, required=True, help="Path to the input data as a .csv")
+    parser.add_argument("--model-path", type=str, required=True, help="Path to the trained model")
+    parser.add_argument("--output-path", type=str, required=True, help="Path to save the data with applied labels as a .csv")
+    
+    args = parser.parse_args()
+
+    df = pd.read_csv(args.data_path)
+    with open(args.model_path,"rb") as f:
+        model = pickle.load(f)
+
+    model_app = ModelApplication(model=model,
+                                 dataframe=df,
+                                 features=list(model.feature_names_in_))
+
+    df["Labels"] = model_app.run()
+
+    df.to_csv(args.output_path)
