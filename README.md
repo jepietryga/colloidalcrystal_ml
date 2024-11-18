@@ -18,7 +18,7 @@ Additionally, code for helping train and utilize RandomForest classification mod
 
 `facet_ml` holds the main body of code, which includes code for segmenters, models, and utility scripts for handling images as well as the applet code.
 
-`Tutorials` holds notebook and script files that walkthrough usage of some of the code. This includes segmentation, classifier training, and data viewing.
+`Tutorials` holds notebooks and scripts that walkthrough usage of some of the code. This includes segmentation, classifier training, and data viewing. In addition, instructions on using the terminal commands is provided.
 
 To quickly access the assisted labeling applet, just write `dash_applet` in the terminal and follow its instructions.
 
