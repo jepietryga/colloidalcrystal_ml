@@ -7,7 +7,8 @@
 <li> Models trained as part of the work on <a href="https://doi.org/10.5281/zenodo.14019586">Zenodo</a> </li>
 
 <li>Segment Anything Vi-T Large <code>wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth </code></li>
-
+</ul>
+<p>The mask_rcnn model needs to be placed in a folder called <code>torch</code> to be utilized.</p>
 
 </ul>
 
