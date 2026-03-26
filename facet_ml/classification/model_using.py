@@ -10,19 +10,29 @@ import copy
 import argparse
 import pickle
 
+
+def get_default_color_dict() -> dict:
+    return {
+        "Crystal": np.array([0, 0, 255]),
+        "Multiple Crystal": np.array([0, 100, 0]),
+        "Incomplete": np.array([255, 0, 0]),
+        "Poorly Segmented": np.array([0, 255, 255]),
+    }
+
+
 class ModelApplication:
 
     def __init__(
         self,
         model: Union[callable, str],
         image_segmenter: ImageSegmenter = None,
-        features: Union[str, list] = [],
+        features: Union[str, list] = None,
         targets: list[str] = "Labels",
-        replacement_dict: Dict[str, object] = {},
-        featurizers: list = [],
+        replacement_dict: Dict[str, object] | None = None,
+        featurizers: list | None = None,
         image: Union[np.ndarray, str] = None,
         dataframe: pd.DataFrame = None,
-        proba_cutoff: float = None
+        proba_cutoff: float = None,
     ):
         """
         Helper Class for wrapping the application of a model to an ImageSegmenter. Not needded, but can be useful
@@ -48,8 +58,10 @@ class ModelApplication:
             features if isinstance(features, list) else load_feature_config(features)
         )
         self.targets = targets
-        self.replacement_dict = replacement_dict
-        self.featurizers = featurizers
+        self.replacement_dict = (
+            replacement_dict.copy() if replacement_dict is not None else {}
+        )
+        self.featurizers = list(featurizers) if featurizers is not None else []
         self._df_working = dataframe
         self.proba_cutoff = proba_cutoff
 
@@ -83,16 +95,16 @@ class ModelApplication:
         if self._df_working is None:
             if isinstance(self.image_segmenter.image_working, type(None)):
                 raise Exception("ImageSegmenter does not have a valid image")
-            
+
             for featurizer in self.featurizers:
                 featurizer(self.image_segmenter)
             self._df_working = self.image_segmenter.df.copy()
         return self._df_working
-    
+
     def run(self) -> pd.Series:
-        '''
+        """
         Run the storedd dmodel on the currently held dataframe
-        '''
+        """
 
         df_working = self.df_working[self.features]
 
@@ -105,9 +117,11 @@ class ModelApplication:
             proba = self.model.predict_proba(df_working)
 
             # Apply cutoff to assign class labels
-            predictions = np.where(np.max(proba, axis=1) >= self.proba_cutoff, 
-                                self.model.classes_[np.argmax(proba, axis=1)], 
-                                "Poorly Segmented")  # Assign np.nan if no class exceeds the cutoff
+            predictions = np.where(
+                np.max(proba, axis=1) >= self.proba_cutoff,
+                self.model.classes_[np.argmax(proba, axis=1)],
+                "Poorly Segmented",
+            )  # Assign np.nan if no class exceeds the cutoff
         else:
             predictions = self.model.predict(df_working)
 
@@ -116,20 +130,15 @@ class ModelApplication:
 
         # Apply the recursive replacement logic
         self.recursive_replacement(df_working)
-        
+
         return df_working[self.targets]
 
 
 def visualize_labels(
     IS: ImageSegmenter,
     df: pd.DataFrame,
-    color_dict: dict = {
-        "Crystal": np.array([0, 0, 255]),
-        "Multiple Crystal": np.array([0, 100, 0]),
-        "Incomplete": np.array([255, 0, 0]),
-        "Poorly Segmented": np.array([0, 255, 255]),
-    },
-    default_color: np.ndarray = np.array([255, 0, 255]),
+    color_dict: dict | None = None,
+    default_color: np.ndarray | None = None,
 ):
     """
     Given an ImageSegmenter and a dataframe post-processing, apply colors
@@ -139,6 +148,10 @@ def visualize_labels(
         df (pd.Dataframe) : Dataframe with labels and row informtion corresponding to the ImageSegmenter and labeling dict
         color_dict (dict) : mapping of label to color
     """
+    color_dict = color_dict if color_dict is not None else get_default_color_dict()
+    default_color = (
+        default_color.copy() if default_color is not None else np.array([255, 0, 255])
+    )
     region_arr = IS.grab_region_array(focused=False)
     mod_image = cv2.cvtColor(IS.image_cropped, cv2.COLOR_BGR2RGB)
     mask_image = copy.deepcopy(mod_image) * 0
@@ -146,7 +159,7 @@ def visualize_labels(
     ii = 0
     for index, row in df.iterrows():
         id_label = row["Labels"]
-        color = color_dict.get(id_label, np.array([255, 0, 255]))
+        color = color_dict.get(id_label, default_color)
         mask_logical = region_arr[ii] > 0
         edge_logical = cv2.dilate(
             mask_logical.astype(np.uint8), kernel=np.ones((5, 5))
@@ -186,24 +199,34 @@ def dilate_logical(array: np.ndarray, dilate_size: int = 1) -> np.ndarray:
 
     return return_array
 
+
 def use_model():
-    '''
+    """
     Function endpoint for using models
-    '''
+    """
     parser = argparse.ArgumentParser(description="Use a Random Forest model")
-    parser.add_argument("--data-path", type=str, required=True, help="Path to the input data as a .csv")
-    parser.add_argument("--model-path", type=str, required=True, help="Path to the trained model")
-    parser.add_argument("--output-path", type=str, required=True, help="Path to save the data with applied labels as a .csv")
-    
+    parser.add_argument(
+        "--data-path", type=str, required=True, help="Path to the input data as a .csv"
+    )
+    parser.add_argument(
+        "--model-path", type=str, required=True, help="Path to the trained model"
+    )
+    parser.add_argument(
+        "--output-path",
+        type=str,
+        required=True,
+        help="Path to save the data with applied labels as a .csv",
+    )
+
     args = parser.parse_args()
 
     df = pd.read_csv(args.data_path)
-    with open(args.model_path,"rb") as f:
+    with open(args.model_path, "rb") as f:
         model = pickle.load(f)
 
-    model_app = ModelApplication(model=model,
-                                 dataframe=df,
-                                 features=list(model.feature_names_in_))
+    model_app = ModelApplication(
+        model=model, dataframe=df, features=list(model.feature_names_in_)
+    )
 
     df["Labels"] = model_app.run()
 

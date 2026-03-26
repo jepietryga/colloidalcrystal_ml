@@ -1,5 +1,4 @@
 from facet_ml.segmentation import segmenter
-from facet_ml.segmentation import visualization
 
 from pathlib import Path
 import json
@@ -25,14 +24,14 @@ class CocoDataloader:
         annotations_file: str = "_annotations.coco.json",
         image_folder: str = None,
     ):
-        '''
+        """
         Dataa class for loading Coco data, generally. Not used for ML purposes
 
         Args:
             folder (str) : Folder to look into
             annotations_file (str) : File that holds annotations for the images in the folder
-            image_folder (str) : Folder to findd images in if different than the used folder 
-        '''
+            image_folder (str) : Folder to findd images in if different than the used folder
+        """
         self.folder = folder
         self.annotations_file = annotations_file
         self.annotations_path = Path(folder) / annotations_file
@@ -144,12 +143,13 @@ class CocoDataloader:
 def segment_mean_intersection_over_union(
     dataloader: CocoDataloader,
     image_segmenter: segmenter.ImageSegmenter,
-    memoization: dict = {},
+    memoization: dict | None = None,
 ):
     """
     Given a CocoDataset and ImageSegmenter, compare against the ground truth for each image.
     Return thre mean iou AND
     """
+    memoization = memoization.copy() if memoization is not None else {}
     iou_vals = []
     for image_id in range(dataloader.n_images):
         image_path = dataloader.get_image_path(image_id)
@@ -179,7 +179,7 @@ def segment_mean_intersection_over_union(
 
 
 def torch_segment_mean_intersection_over_union(
-    dataloader: CocoDataloader, model, memoization: dict = {}, device="cuda"
+    dataloader: CocoDataloader, model, memoization: dict | None = None, device="cuda"
 ):
     """
     Given a CocoDataset and Pytorch model, compare against the ground truth for each image.
@@ -190,6 +190,7 @@ def torch_segment_mean_intersection_over_union(
         memoization (dict) : Hold memoized information for images such that rerunning is not required
         device (str) : Device used by torch
     """
+    memoization = memoization.copy() if memoization is not None else {}
     iou_vals = []
     for image_id in range(dataloader.n_images):
         image_path = dataloader.get_image_path(image_id)
@@ -224,7 +225,7 @@ def torch_segment_mean_intersection_over_union(
 def pixel_accuracy(
     dataloader: CocoDataloader,
     image_segmenter: segmenter.ImageSegmenter,
-    memoization: dict = {},
+    memoization: dict | None = None,
 ):
     """
     Check how many pixels are correctly identified as background or not
@@ -232,8 +233,9 @@ def pixel_accuracy(
         dataloader (CocoDataloader) : Class holding images to compare
         model (torch.model) : Torch model that can be run and used
         memoization (dict) : Hold memoized information for images such that rerunning is not required
-        
+
     """
+    memoization = memoization.copy() if memoization is not None else {}
     accuracy_vals = []
     for image_id in range(dataloader.n_images):
         image_path = dataloader.get_image_path(image_id)
@@ -264,7 +266,7 @@ def pixel_accuracy(
 
 
 def torch_pixel_accuracy(
-    dataloader: CocoDataloader, model, memoization: dict = {}, device="cuda"
+    dataloader: CocoDataloader, model, memoization: dict | None = None, device="cuda"
 ):
     """
     Check how many pixels are correctly identified as background or not
@@ -274,6 +276,7 @@ def torch_pixel_accuracy(
         memoization (dict) : Hold memoized information for images such that rerunning is not required
         device (str) : Torch device to use
     """
+    memoization = memoization.copy() if memoization is not None else {}
     accuracy_vals = []
     for image_id in range(dataloader.n_images):
         image_path = dataloader.get_image_path(image_id)
@@ -369,7 +372,7 @@ def bidirectional_intersection(
 def instance_mean_intersection_over_union(
     dataloader: CocoDataloader,
     image_segmenter: segmenter.ImageSegmenter,
-    memoization: dict = {},
+    memoization: dict | None = None,
 ):
     """
     Get the mIoU
@@ -377,8 +380,9 @@ def instance_mean_intersection_over_union(
         dataloader (CocoDataloader) : Class holding images to compare
         model (torch.model) : Torch model that can be run and used
         memoization (dict) : Hold memoized information for images such that rerunning is not required
-        
+
     """
+    memoization = memoization.copy() if memoization is not None else {}
 
     iou_total_values = np.array([])
     for image_id in range(dataloader.n_images):
@@ -437,7 +441,7 @@ def instance_mean_intersection_over_union(
 
 
 def torch_instance_mean_intersection_over_union(
-    dataloader: CocoDataloader, model, memoization: dict = {}, device="cuda"
+    dataloader: CocoDataloader, model, memoization: dict | None = None, device="cuda"
 ):
     """
     Get the mIoU
@@ -447,6 +451,7 @@ def torch_instance_mean_intersection_over_union(
         memoization (dict) : Hold memoized information for images such that rerunning is not required
         device (str) : Torch device to use
     """
+    memoization = memoization.copy() if memoization is not None else {}
 
     iou_total_values = np.array([])
     for image_id in range(dataloader.n_images):

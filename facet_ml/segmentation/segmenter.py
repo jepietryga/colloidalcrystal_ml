@@ -24,14 +24,62 @@ from facet_ml.segmentation import edge_modification as em
 from facet_ml.segmentation import thresholding
 from facet_ml.static.path import STATIC_MODELS
 from facet_ml.segmentation import features as feat
-from facet_ml.classification import mask_rcnn
 
 import argparse
-from abc import ABC, abstractmethod, abstractproperty
-
+from abc import ABC, abstractmethod
 
 # Legacy incrementer for image pixels
 LABEL_INCREMENT = 20
+
+
+def get_default_sam_kwargs() -> dict:
+    return {
+        "points_per_side": 64,
+        "min_mask_region_area": 20,
+    }
+
+
+def get_default_region_featurizers() -> list:
+    return [
+        feat.AverageCurvatureFeaturizer(),
+        feat.StdCurvatureFeaturizer(),
+        feat.MinCurvatureFeaturizer(),
+        feat.MaxCurvatureFeaturizer(),
+        feat.PercentConvexityCurvatureFeaturizer(),
+        feat.LongestContiguousConcavityCurvatureFeaturizer(),
+        feat.LongestContiguousConvexityCurvatureFeaturizer(),
+        feat.DistinctPathsCurvatureFeaturizer(),
+    ]
+
+
+def get_default_labeling_dict() -> dict:
+    return {
+        "C": "Crystal",
+        "M": "Multiple Crystal",
+        "P": "Poorly Segmented",
+        "I": "Incomplete",
+    }
+
+
+def get_torch_device(requested: str = None) -> str:
+    """
+    Pick an execution device that works on Linux/Windows CUDA machines and Apple Silicon.
+    """
+    if requested:
+        requested = requested.lower()
+        if requested.startswith("cuda") and torch.cuda.is_available():
+            return requested
+        if requested == "mps" and torch.backends.mps.is_available():
+            return "mps"
+        if requested == "cpu":
+            return "cpu"
+
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
 
 #### Segmenters ####
 # These just act on a given image, no foo-foo processing
@@ -76,7 +124,8 @@ class AbstractSegmenter(ABC):
         self._image = new_image
         self.reset_segmenter()
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def thresh(self):
         raise NotImplemented
 
@@ -92,7 +141,8 @@ class AbstractSegmenter(ABC):
     def markers(self):
         raise NotImplemented
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def markers_filled(self):
         raise NotImplemented
 
@@ -111,7 +161,7 @@ class AlgorithmicSegmenter(AbstractSegmenter):
     # Add new connections to edge thresholding functions as developed
     mapping_edge = [
         (
-            lambda edge: edge == None,
+            lambda edge: edge is None,
             lambda s: np.full_like(s.image, 0).astype(np.uint8),
         ),
         (lambda edge: edge == "canny", em.edge_canny),
@@ -237,6 +287,7 @@ class AlgorithmicSegmenter(AbstractSegmenter):
             with open(STATIC_MODELS["bg_segmenter"], "rb") as f:
                 self.pixel_model = pickle.load(f)
 
+
 class MaskRCNNSegmenter(AbstractSegmenter):
 
     def __init__(self, image: np.ndarray, device: str = None):
@@ -249,21 +300,15 @@ class MaskRCNNSegmenter(AbstractSegmenter):
         """
         super().__init__(image)
 
-        import torch
-
         model_path = STATIC_MODELS["maskrcnn"]
-        self.model = torch.load(model_path,map_location=torch.device("cpu"))
+        self.model = torch.load(
+            model_path,
+            map_location=torch.device("cpu"),
+            weights_only=False,
+        )
         self.model.eval()
-        
-        if device is None:
-            if torch.cuda.is_available():
-                self.device = "cuda"
-            else:
-                self.device = "cpu"
-        elif torch.cuda.is_available() and "cuda" in device:
-            self.device = device
-        else:
-            self.device = "cpu"
+
+        self.device = get_torch_device(device)
 
         self.model.to(self.device)
 
@@ -309,7 +354,7 @@ class MaskRCNNSegmenter(AbstractSegmenter):
             for ii in np.arange(num_markers):
 
                 mask_oi = masks[ii, 0, :, :]
-                mask_oi = np.where(mask_oi > .5,True,False)
+                mask_oi = np.where(mask_oi > 0.5, True, False)
                 mask_bulk = cv2.erode(
                     mask_oi.astype(np.uint8), kernel=np.ones((3, 3))
                 ).astype(bool)
@@ -321,14 +366,13 @@ class MaskRCNNSegmenter(AbstractSegmenter):
 
 
 class SAMSegmenter(AbstractSegmenter):
+    _sam_model_cache = {}
+
     def __init__(
         self,
         image: np.ndarray,
         device: str = None,
-        sam_kwargs: dict = {
-            "points_per_side": 64, 
-            "min_mask_region_area":20
-                            },
+        sam_kwargs: dict | None = None,
     ):
         """
         Create a Segmenter class which uses a SegmentAnything model from Meta.
@@ -342,34 +386,57 @@ class SAMSegmenter(AbstractSegmenter):
         """
 
         super().__init__(image)
-        self.sam_kwargs = sam_kwargs
-        if device is None:
-            if torch.cuda.is_available():
-                self.device = "cuda"
-            else:
-                self.device = "cpu"
-        elif torch.cuda.is_available() and "cuda" in device:
-            self.device = device
-        else:
-            self.device = "cpu"
+        self.sam_kwargs = (
+            sam_kwargs.copy() if sam_kwargs is not None else get_default_sam_kwargs()
+        )
+        self.device = self._get_sam_device(device)
 
         # SAM Variable
         self._mask_generator = None
+
+    @staticmethod
+    def _get_sam_device(requested: str = None) -> str:
+        device = get_torch_device(requested)
+        # Segment Anything hits float64 ops that MPS does not support reliably.
+        return "cpu" if device == "mps" else device
+
+    @classmethod
+    def clear_model_cache(cls):
+        cls._sam_model_cache = {}
+
+    @classmethod
+    def _load_sam_model(
+        cls, model_type: str, checkpoint: Union[str, Path], device: str
+    ):
+        cache_key = (model_type, str(checkpoint), device)
+        if cache_key in cls._sam_model_cache:
+            return cls._sam_model_cache[cache_key]
+
+        from segment_anything import sam_model_registry
+
+        sam = sam_model_registry[model_type](checkpoint=None)
+        state_dict = torch.load(
+            checkpoint,
+            map_location=torch.device("cpu"),
+            weights_only=True,
+        )
+        sam.load_state_dict(state_dict)
+        sam.to(device=device)
+        sam.eval()
+        cls._sam_model_cache[cache_key] = sam
+        return sam
 
     @property
     def mask_generator(self):
         if self._mask_generator is None:
 
             from segment_anything import (
-                sam_model_registry,
                 SamAutomaticMaskGenerator,
-                SamPredictor,
             )
-            
+
             model_type = "vit_l"
             sam_checkpoint = STATIC_MODELS["segment_anything_vit_l"]
-            sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-            sam.to(device=self.device)
+            sam = self._load_sam_model(model_type, sam_checkpoint, self.device)
             mask_generator = SamAutomaticMaskGenerator(sam, **self.sam_kwargs)
             self._mask_generator = mask_generator
         return self._mask_generator
@@ -389,10 +456,11 @@ class SAMSegmenter(AbstractSegmenter):
         if self._markers_filled is None:
             image_convert = cv2.cvtColor(self.image, cv2.COLOR_GRAY2RGB)
             with torch.no_grad():
-                with torch.device(self.device):
-                    masks = self.mask_generator.generate(image_convert)
+                masks = self.mask_generator.generate(image_convert)
 
-                self._markers_filled = self._label_increment * np.ones(np.shape(self.image))
+                self._markers_filled = self._label_increment * np.ones(
+                    np.shape(self.image)
+                )
                 for ii, mask in enumerate(masks):
                     mask_oi = mask["segmentation"]
                     mask_bulk = cv2.erode(
@@ -403,6 +471,7 @@ class SAMSegmenter(AbstractSegmenter):
                     self._markers_filled[mask_bulk] = 1 + self._label_increment + ii
                 self._markers_filled = self._markers_filled.astype(int)
         return self._markers_filled
+
 
 # Add to this mapper as new segmenters are added
 segmenter_mapper = {
@@ -426,21 +495,12 @@ class ImageSegmenter:
         override_exists: bool = False,
         filename: str = None,
         segmenter: str = "algorithmic",
-        segmenter_kwargs: dict = {},
-        region_featurizers: list = [
-            feat.AverageCurvatureFeaturizer(),
-            feat.StdCurvatureFeaturizer(),
-            feat.MinCurvatureFeaturizer(),
-            feat.MaxCurvatureFeaturizer(),
-            feat.PercentConvexityCurvatureFeaturizer(),
-            feat.LongestContiguousConcavityCurvatureFeaturizer(),
-            feat.LongestContiguousConvexityCurvatureFeaturizer(),
-            feat.DistinctPathsCurvatureFeaturizer(),
-        ],
+        segmenter_kwargs: dict | None = None,
+        region_featurizers: list | None = None,
         file_str: str = None,
     ):
         """
-        Main class for handling segmentation pipeline. Encapsulates reading an image (or image path), loading a segmenter, applying features, and 
+        Main class for handling segmentation pipeline. Encapsulates reading an image (or image path), loading a segmenter, applying features, and
         assisted labeling.
 
         Args:
@@ -463,8 +523,14 @@ class ImageSegmenter:
         self.result_folder_path = result_folder_path
         self.override_exists = override_exists
         self.file_str = file_str
-        self.segmenter_kwargs = segmenter_kwargs
-        self.region_featurizers = region_featurizers
+        self.segmenter_kwargs = (
+            segmenter_kwargs.copy() if segmenter_kwargs is not None else {}
+        )
+        self.region_featurizers = (
+            list(region_featurizers)
+            if region_featurizers is not None
+            else get_default_region_featurizers()
+        )
 
         # Image variables
         self._image_read = None
@@ -499,9 +565,9 @@ class ImageSegmenter:
             self.segmenter_class = segmenter
         else:
             raise Exception(
-                f"{segmenter} is not mappable str, "
-                | "an object inheriting AbstractSegmenter, "
-                | "or a class that inherits AbstractSegmenter"
+                f"{segmenter} is not a supported segmenter. "
+                "Use a mapped string, an AbstractSegmenter instance, "
+                "or an AbstractSegmenter subclass."
             )
 
         # hidden variables
@@ -550,8 +616,9 @@ class ImageSegmenter:
         self._input_path = value
         if self._input_path is not None:
             # Redefine internal paths (these may be removed at some point)
-            if isinstance(self._input_path, str):
-                self.filename = ".".join(self.input_path.split("/")[-1].split(".")[:-1])
+            if isinstance(self._input_path, (str, Path)):
+                self._input_path = str(self._input_path)
+                self.filename = Path(self._input_path).stem
             else:
                 temp_image = self._input_path
                 self._input_path = f"{self.filename}.png"
@@ -568,8 +635,10 @@ class ImageSegmenter:
             # Load into the segmenter
             self.segmenter.image = self.image_cropped
 
+            suffix = f"_{self.file_str}" if self.file_str else ""
             self._csv_file = str(
-                Path(self.result_folder_path) / f"values_{ Path(self._filename).stem }_{self.file_str}.csv"
+                Path(self.result_folder_path)
+                / f"values_{Path(self._filename).stem}{suffix}.csv"
             )
 
             # self.process_images(edge_modification=self.edge_modification)
@@ -764,9 +833,9 @@ class ImageSegmenter:
         return self._df
 
     def create_csv(self):
-        '''
+        """
         Simple function for saving csv. Helper function for live labeling to ensure progress is not lost
-        '''
+        """
         if self.override_exists:
             os.makedirs(self.result_folder_path, exist_ok=True)
             self.df.to_csv(self._csv_file)
@@ -849,7 +918,7 @@ class ImageSegmenter:
         Can be useful for quickly making bools of regions of any internal image, so is distinguished from region_arr attribute
         Args:
             img_oi (np.ndarray) : image with same size as working image. Can be markers, image_working, etc.
-            focused (bool) : If focused, return regions focused solely on the region area, plus the buffer amount of pixels on each side. 
+            focused (bool) : If focused, return regions focused solely on the region area, plus the buffer amount of pixels on each side.
                             Helpful for visualization
             alpha (float) : Alpha channel for pixels not associatredd with the region. Can highlight difference in region and dnearby image spots
             buffer (int) : Buffer pixels to pad to mask if focusing the image
@@ -880,7 +949,7 @@ class ImageSegmenter:
         Can be useful for quickly making bools of regions of any internal image, so is distinguished from region_arr attribute
         Args:
             img_oi (np.ndarray) : image with same size as working image. Can be markers, image_working, etc.
-            focused (bool) : If focused, return regions focused solely on the region area, plus the buffer amount of pixels on each side. 
+            focused (bool) : If focused, return regions focused solely on the region area, plus the buffer amount of pixels on each side.
                             Helpful for visualization
             alpha (float) : Alpha channel for pixels not associatredd with the region. Can highlight difference in region and dnearby image spots
             buffer (int) : Buffer pixels to pad to mask if focusing the image
@@ -905,18 +974,18 @@ class ImageSegmenter:
 
     def begin_labeling(
         self,
-        labeling_dict={
-            "C": "Crystal",
-            "M": "Multiple Crystal",
-            "P": "Poorly Segmented",
-            "I": "Incomplete",
-        },
+        labeling_dict: dict | None = None,
     ):
         """
         Major Utility function for labeling of segmented regions in a jupyter notebook.
         Args:
             labeling_dict (dict) : To speed up labeling, assign letters to a full label for easy mapping. Will also catch missed keystrokes
         """
+        labeling_dict = (
+            labeling_dict.copy()
+            if labeling_dict is not None
+            else get_default_labeling_dict()
+        )
         # Make sure B and D are not overwritten
         if "B" in labeling_dict or "D" in labeling_dict:
             raise Exception("Cannot use 'B' or 'D' in labeling_dict")
@@ -980,22 +1049,22 @@ class ImageSegmenter:
 
     ## Applet Helper functions below
     def update_df_label_at_region(self, label, region=None):
-        '''
+        """
         Set label for the dadtaframe row of region
         Args:
             label (str) : Label to store
             region (int) : Region row to target
-        '''
+        """
         if region is None:
             region = self._region_tracker
         self.df.loc[self.df["Region"] == region, "Labels"] = label
 
     def labeling_mapping(self):
         """
-        Code added 2022.08.12 for debugging and salvaging data. 
+        Code added 2022.08.12 for debugging and salvaging data.
         Issue: Row, index, andd posiiton in array were messedd dup by 0 to 1 pixel regions disappearing. This salvaged data
         by recreating the originaal dadta and dthen approrpiately aaccounting for offset.
-        Kept for reference 
+        Kept for reference
         """
         self.df  # To ensure it's been initialized
         ii = 0
@@ -1014,7 +1083,6 @@ class ImageSegmenter:
         return mapping_region, mapping_index
 
 
-
 class BatchImageSegmenter:
 
     def __init__(
@@ -1029,17 +1097,8 @@ class BatchImageSegmenter:
         result_folder_path="Results",
         override_exists: bool = True,
         segmenter: str = "algorithmic",
-        segmenter_kwargs: dict = {},
-        region_featurizers=[
-            feat.AverageCurvatureFeaturizer(),
-            feat.StdCurvatureFeaturizer(),
-            feat.MinCurvatureFeaturizer(),
-            feat.MaxCurvatureFeaturizer(),
-            feat.PercentConvexityCurvatureFeaturizer(),
-            feat.LongestContiguousConcavityCurvatureFeaturizer(),
-            feat.LongestContiguousConvexityCurvatureFeaturizer(),
-            feat.DistinctPathsCurvatureFeaturizer(),
-        ],
+        segmenter_kwargs: dict | None = None,
+        region_featurizers: list | None = None,
         file_str=None,
         filename_list=None,
     ):
@@ -1061,9 +1120,16 @@ class BatchImageSegmenter:
         self.result_folder_path = result_folder_path
         self.override_exists = override_exists
         self.segmenter = segmenter
-        self.segmenter_kwargs = segmenter_kwargs
+        self.segmenter_kwargs = (
+            segmenter_kwargs.copy() if segmenter_kwargs is not None else {}
+        )
         self.file_str = file_str
         self.filename_list = filename_list
+        region_featurizers = (
+            list(region_featurizers)
+            if region_featurizers is not None
+            else get_default_region_featurizers()
+        )
 
         # Template
         self._template_IS = ImageSegmenter(
@@ -1258,14 +1324,26 @@ def grab_bound(img, mode="top", buffer=0):
 
 def use_image_segmenter():
     parser = argparse.ArgumentParser(description="Use a Image Segmenter model")
-    parser.add_argument("--image-path", type=str, required=True, help="Path to the input data as a .csv")
-    parser.add_argument("--image-segmenter-kwargs", type=str, required=True, help="JSON-style string to access image segmenter kwargs")
-    parser.add_argument("--output-path", type=str, required=True, help="Path to save the data with applied labels as a .csv")
-    
+    parser.add_argument(
+        "--image-path", type=str, required=True, help="Path to the input data as a .csv"
+    )
+    parser.add_argument(
+        "--image-segmenter-kwargs",
+        type=str,
+        required=True,
+        help="JSON-style string to access image segmenter kwargs",
+    )
+    parser.add_argument(
+        "--output-path",
+        type=str,
+        required=True,
+        help="Path to save the data with applied labels as a .csv",
+    )
+
     args = parser.parse_args()
 
-    params = json.loads(args.image_segmenter_kwargs) if args.image_segmenter_kwargs else {}
-    IS = ImageSegmenter(input_path=args.image_path,
-                   **params
-                   )
+    params = (
+        json.loads(args.image_segmenter_kwargs) if args.image_segmenter_kwargs else {}
+    )
+    IS = ImageSegmenter(input_path=args.image_path, **params)
     IS.df.to_csv(args.output_path)

@@ -14,7 +14,10 @@ import json
 import os
 from pathlib import Path
 
-from pycocotools.coco import COCO
+try:
+    from pycocotools.coco import COCO
+except ImportError:  # pragma: no cover - optional dependency
+    COCO = None
 
 
 
@@ -284,6 +287,11 @@ class CocoColloidalDataset(Dataset):
             transforms (callable, optional): A function/transform that takes in
                                              an image and returns a transformed version.
         """
+        if COCO is None:
+            raise ImportError(
+                "pycocotools is required for CocoColloidalDataset. "
+                "Install the macOS environment or `pip install pycocotools`."
+            )
         self.root = root
         self.transforms = transforms
         self.annotation_file = annotation_file

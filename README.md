@@ -9,9 +9,10 @@ Additionally, code for helping train and utilize RandomForest classification mod
 
 <ol>
 <li> Get the repository using <code>git clone https://github.com/jepietryga/colloidal_crystal_ML.git</code>. </li>
-<li> Install dependencies using <code>conda env create -f environment.yml</code>.</li>
-<li> Install the library using <code>pip install -e ./</code>. The editable version is the easiest to move models into</li>
-<li> Navigate to <code>./facet_ml/static/Models</code> and follow instructions in its README.md to download models from Zenodo.
+<li> On Linux/Windows with CUDA, install dependencies using <code>conda env create -f environment.yml</code>.</li>
+<li> On macOS, install dependencies using <code>conda env create -f environment_mac.yml</code>.</li>
+<li> Activate the environment, then install the library using <code>pip install -e ".[gui,models]"</code>.</li>
+<li> Download model files with <code>download_models</code>. Add <code>--overwrite</code> if you want to refresh existing files.</li>
 </ol>
 
 # How to use

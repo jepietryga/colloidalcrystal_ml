@@ -21,9 +21,7 @@ def adjust_df_crystal_noncrystal_data(df: pd.DataFrame):
     return df_copy
 
 
-def adjust_df_list_values(
-    df: pd.DataFrame, label_list: list[str] = ["Crystal", "Multiple Crystal"]
-):
+def adjust_df_list_values(df: pd.DataFrame, label_list: list[str] | None = None):
     """
     Given a dataframe, keep only values in list (split the second level)
                   ALL DATA
@@ -32,6 +30,8 @@ def adjust_df_list_values(
       ---> /   \                   /            \
     Crystal  Multiple-Crystal  Incomplete     Poorly Segmented
     """
+    if label_list is None:
+        label_list = ["Crystal", "Multiple Crystal"]
     df_copy = df[df["Labels"].isin(label_list)]
     return df_copy
 

@@ -1,3 +1,31 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: facet_ml
 Version: 0.2.0
+Requires-Python: <3.13,>=3.10
+Requires-Dist: numpy<2,>=1.25
+Requires-Dist: pandas
+Requires-Dist: scipy
+Requires-Dist: scikit-image
+Requires-Dist: scikit-learn==1.2.0
+Requires-Dist: matplotlib
+Requires-Dist: opencv-python<4.12
+Requires-Dist: h5py
+Requires-Dist: pillow
+Requires-Dist: dash
+Requires-Dist: dash-bootstrap-components
+Requires-Dist: pyyaml
+Requires-Dist: requests
+Requires-Dist: torch
+Requires-Dist: torchvision
+Provides-Extra: gui
+Requires-Dist: PyQt5; extra == "gui"
+Provides-Extra: models
+Requires-Dist: pycocotools; extra == "models"
+Requires-Dist: segment-anything; extra == "models"
+Requires-Dist: fvcore; extra == "models"
+Requires-Dist: iopath; extra == "models"
+Requires-Dist: hydra-core; extra == "models"
+Requires-Dist: omegaconf; extra == "models"
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: black; extra == "dev"

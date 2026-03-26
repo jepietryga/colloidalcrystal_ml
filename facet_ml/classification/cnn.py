@@ -6,6 +6,7 @@ from torch import nn
 from torchvision.io import read_image
 from torchvision.ops.boxes import masks_to_boxes
 from torchvision import tv_tensors
+
 # from torchvision.transforms.v2 import functional as F
 import torch.nn.functional as F
 from torchvision.transforms import v2 as T
@@ -40,6 +41,7 @@ INT_3_CLASS_TO_LABEL = {0: "C", 1: "MC", 2: "I"}
 INT_TO_LABEL = {0: "B", 1: "C", 2: "MC", 3: "I", 4: "PS"}
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
 
 def get_model(num_classes, model_choice=torchvision.models.resnet50(weights="DEFAULT")):
     """
@@ -77,16 +79,16 @@ def get_binary_model(
 
 
 def repeat_channels(x):
-    '''
+    """
     Given a 2D image, repeat its channel
-    '''
+    """
     return x.repeat(3, 1, 1)
 
 
 class get_transform:
-    '''
+    """
     Transform class that can be pickled
-    '''
+    """
 
     def __init__(self, train, im_size=256, mode: str = "no_blur"):
         self.train = train
@@ -189,7 +191,6 @@ def load_colloidal_datasets_h5(
         dataset_test = torch.utils.data.Subset(dataset_test, indices[index_cut:])
     else:
 
-
         kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
         if three_class_mode:
             processed_df_labels = [
@@ -200,7 +201,7 @@ def load_colloidal_datasets_h5(
             processed_df_labels = [
                 LABEL_TO_INT.get(row.label, 4) for _, row in dataset_train.df.iterrows()
             ]
-        (train_indices, test_indices) = next(
+        train_indices, test_indices = next(
             kf.split(np.zeros(len(dataset_train)), processed_df_labels)
         )
         dataset_train = torch.utils.data.Subset(dataset_train, train_indices)
@@ -228,6 +229,7 @@ def load_colloidal_datasets_h5(
 
     return dataloaders, datasize
 
+
 transform = T.Compose(
     [
         # T.ToPILImage(),  # Convert NumPy array (or tensor) to PIL Image
@@ -248,7 +250,9 @@ transform = T.Compose(
         # ),  # Apply Gaussian blur with random sigma
         T.ToTensor(),  # Convert PIL image back to tensor
     ]
-    )
+)
+
+
 class CustomTransform:
     def __init__(self):
         self.transform = transform
@@ -261,11 +265,12 @@ class CustomTransform:
         seed = random.randint(0, 2**32)
         torch.manual_seed(seed)
         img = self.transform(img)
-        
+
         torch.manual_seed(seed)
         mask = self.transform(mask)
-        
+
         return img, mask
+
 
 def load_colloidal_datasets_coco(
     parent_dir: str,
@@ -273,14 +278,13 @@ def load_colloidal_datasets_coco(
     testing_dir: str = "test",
     num_workers: int = 8,
     batch_size: int = 2,
-    mark_edges: bool = False
+    mark_edges: bool = False,
 ):
     """
     Use the COCO data to train CNN background-foreground pixel classifier
     """
 
     # Heavy augmentation is needed
-    
 
     dataset_train = CocoColloidalDataset(
         root=os.path.join(parent_dir, training_dir),
@@ -288,13 +292,13 @@ def load_colloidal_datasets_coco(
             parent_dir, training_dir, "_annotations.coco.json"
         ),
         transforms=CustomTransform(),
-        mark_edges=mark_edges
+        mark_edges=mark_edges,
     )
     dataset_test = CocoColloidalDataset(
         root=os.path.join(parent_dir, testing_dir),
         annotation_file=os.path.join(parent_dir, testing_dir, "_annotations.coco.json"),
         transforms=CustomTransform(),
-        mark_edges=mark_edges
+        mark_edges=mark_edges,
     )
 
     dataloader_train = torch.utils.data.DataLoader(
@@ -321,7 +325,9 @@ def load_colloidal_datasets_coco(
     }
     return dataloaders, datasize
 
+
 ## Write model variations here
+
 
 class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels, dropout_prob=0.5):
@@ -338,29 +344,35 @@ class DoubleConv(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes,
-                 features:list = [64, 128, 256, 512],
-                 dim=256):
+    def __init__(
+        self,
+        n_channels,
+        n_classes,
+        features: list | None = None,
+        dim=256,
+    ):
         super(UNet, self).__init__()
+        if features is None:
+            features = [64, 128, 256, 512]
         self.n_channels = n_channels
-        self.n_classes = n_classes  
+        self.n_classes = n_classes
         self.ups = nn.ModuleList()
         self.downs = nn.ModuleList()
-        self.pool = nn.MaxPool2d(kernel_size=2,stride=2)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # Build downs
         pre_feat = n_channels
         for feature in features:
-            self.downs.append(SegDoubleConv(pre_feat,feature) )
+            self.downs.append(SegDoubleConv(pre_feat, feature))
             pre_feat = feature
 
         for feature in reversed(features):
-            self.ups.append(nn.ConvTranspose2d(
-                    feature*2, feature, kernel_size=2, stride=2
-                ))
-            self.ups.append(SegDoubleConv(feature*2,feature))
+            self.ups.append(
+                nn.ConvTranspose2d(feature * 2, feature, kernel_size=2, stride=2)
+            )
+            self.ups.append(SegDoubleConv(feature * 2, feature))
 
-        self.bottom = SegDoubleConv(features[-1],features[-1]*2)
+        self.bottom = SegDoubleConv(features[-1], features[-1] * 2)
         self.adaptive_pool = nn.AdaptiveAvgPool2d((dim, dim))
         self.outc = nn.Conv2d(features[0], self.n_classes, kernel_size=1)
 
@@ -383,10 +395,12 @@ class UNet(nn.Module):
             x = self.ups[ii](x)
             skip_connection = skip_connections[ii // 2]
             concat_skip = torch.cat((skip_connection, x), dim=1)
-            x = self.ups[ii+1](concat_skip)
-        
+            x = self.ups[ii + 1](concat_skip)
+
         logits = self.outc(x)
-        logits = F.interpolate(logits, size=(256, 256), mode="bilinear", align_corners=True)
+        logits = F.interpolate(
+            logits, size=(256, 256), mode="bilinear", align_corners=True
+        )
 
         logits = F.adaptive_avg_pool2d(
             logits, 1
@@ -410,36 +424,42 @@ class SegDoubleConv(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
+
 class SegUNet(nn.Module):
-    '''
+    """
     Functionally, this is identical to UNet but changes to do pixel classification instead of
     region classification.
-    '''
-    def __init__(self, n_channels, 
-                 n_classes=2, 
-                 dim=256,
-                 features:list = [64, 128, 256, 512]
-                 ):
+    """
+
+    def __init__(
+        self,
+        n_channels,
+        n_classes=2,
+        dim=256,
+        features: list | None = None,
+    ):
         super(SegUNet, self).__init__()
+        if features is None:
+            features = [64, 128, 256, 512]
         self.n_channels = n_channels
         self.n_classes = n_classes  # Binary
         self.ups = nn.ModuleList()
         self.downs = nn.ModuleList()
-        self.pool = nn.MaxPool2d(kernel_size=2,stride=2)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # Build downs
         pre_feat = n_channels
         for feature in features:
-            self.downs.append(SegDoubleConv(pre_feat,feature) )
+            self.downs.append(SegDoubleConv(pre_feat, feature))
             pre_feat = feature
 
         for feature in reversed(features):
-            self.ups.append(nn.ConvTranspose2d(
-                    feature*2, feature, kernel_size=2, stride=2
-                ))
-            self.ups.append(SegDoubleConv(feature*2,feature))
+            self.ups.append(
+                nn.ConvTranspose2d(feature * 2, feature, kernel_size=2, stride=2)
+            )
+            self.ups.append(SegDoubleConv(feature * 2, feature))
 
-        self.bottom = SegDoubleConv(features[-1],features[-1]*2)
+        self.bottom = SegDoubleConv(features[-1], features[-1] * 2)
         self.adaptive_pool = nn.AdaptiveAvgPool2d((dim, dim))
         self.outc = nn.Conv2d(features[0], self.n_classes, kernel_size=1)
 
@@ -461,21 +481,23 @@ class SegUNet(nn.Module):
             x = self.ups[ii](x)
             skip_connection = skip_connections[ii // 2]
             concat_skip = torch.cat((skip_connection, x), dim=1)
-            x = self.ups[ii+1](concat_skip)
-        
+            x = self.ups[ii + 1](concat_skip)
+
         logits = self.outc(x)
 
         logits = self.outc(x)
-        logits = F.interpolate(logits, size=(256, 256), mode="bilinear", align_corners=True)
+        logits = F.interpolate(
+            logits, size=(256, 256), mode="bilinear", align_corners=True
+        )
 
         # # logits = F.adaptive_avg_pool2d(
         # #     logits, 1
         # # )  # Global average pooling to convert to class scores
         # # logits = logits.view(logits.size(0), -1)  # Flatten to (batch_size, n_classes)
 
-
         # Apply softmax activation to get class probabilities
         return logits
+
 
 def train_model(
     model,
@@ -526,15 +548,19 @@ def train_model(
                     # track history if only in train
                     with torch.set_grad_enabled(phase == "train"):
                         outputs = model(inputs)
-                        _, preds = torch.max(outputs,1)
-                        preds = torch.argmax(outputs,1)
-                        if isinstance(model,UNet) or isinstance(model,type(resnet152())):
-                            loss = criterion(outputs,labels)
-                        elif isinstance(model,SegUNet):
+                        _, preds = torch.max(outputs, 1)
+                        preds = torch.argmax(outputs, 1)
+                        if isinstance(model, UNet) or isinstance(
+                            model, type(resnet152())
+                        ):
+                            loss = criterion(outputs, labels)
+                        elif isinstance(model, SegUNet):
                             labels = labels.squeeze(1)
                             loss = criterion(outputs, labels)
                         else:
-                            raise Exception(f"{type(model)} not supported in this function")
+                            raise Exception(
+                                f"{type(model)} not supported in this function"
+                            )
                         # exit()
 
                         # backward + optimize only if in training phase
@@ -679,6 +705,7 @@ def load_model(model_config_pth, model_class, num_classes=5):
 
     return model
 
+
 class ColloidalDataset(Dataset):
 
     def __init__(
@@ -787,12 +814,20 @@ class ColloidalDataset(Dataset):
         return cls(df, None, image_segmenter, mode="ImageSegmenter")
         raise NotImplemented
 
+
 class CocoColloidalDataset(Dataset):
     """
     This dataset is intended to be used w/ Coco labeled data
     """
 
-    def __init__(self, root, annotation_file, patch_size=(256, 256), transforms=None,mark_edges=False):
+    def __init__(
+        self,
+        root,
+        annotation_file,
+        patch_size=(256, 256),
+        transforms=None,
+        mark_edges=False,
+    ):
         """
         Args:
             root (string): Root directory where images are stored.
@@ -862,7 +897,7 @@ class CocoColloidalDataset(Dataset):
             empty = np.zeros(image.shape[:2], np.int16)
             edges = np.zeros(image.shape[:2], np.int16)
             for ii, ann in enumerate(annotations):
-                
+
                 fill_val = int(
                     ann["category_id"] != 2
                 )  # 4 should be background, but make this more explicit later
@@ -923,7 +958,7 @@ class CocoColloidalDataset(Dataset):
         mask = torch.tensor(mask, dtype=torch.long)
         if self.transforms:
             img, mask = self.transforms(img, mask)
-        mask = torch.ceil(mask*255)
+        mask = torch.ceil(mask * 255)
         mask = mask.long()
 
         return img, mask
