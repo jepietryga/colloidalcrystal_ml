@@ -1,14 +1,14 @@
 # What is this?
 This is a tool for ImageSegmenting colloidal crystal SEM Images and building models out of them to automate counting & classification.
 
-The main use of this repository is to access the ImageSegmenter class as it allows users to utilize different computer vision tools through classes and applets forp erfomring segmentation and labeling.
+The main use of this repository is to access the ImageSegmenter class as it allows users to utilize different computer vision tools through classes and applets for performing segmentation and labeling.
 
 Additionally, code for helping train and utilize RandomForest classification models is also included.
 
 # How to install
 
 <ol>
-<li> Get the repository using <code>git clone https://github.com/jepietryga/colloidal_crystal_ML.git</code>. </li>
+<li> Get the repository using <code>git clone https://github.com/jepietryga/colloidalcrystal_ML.git</code>. </li>
 <li> On Linux/Windows with CUDA, install dependencies using <code>conda env create -f environment.yml</code>.</li>
 <li> On macOS, install dependencies using <code>conda env create -f environment_mac.yml</code>.</li>
 <li> Activate the environment, then install the library using <code>pip install -e ".[gui,models]"</code>.</li>
