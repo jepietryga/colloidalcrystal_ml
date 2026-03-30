@@ -391,11 +391,11 @@ def save_label(n_clicks):
     raise NotImplemented
 
 
-def run_app():
+def run_app(debug=False):
     """
     Simple script for running the dash_app
     """
-    app.run(port=8051, debug=True)
+    app.run(port=8051, debug=debug)
 
 
 if __name__ == "__main__":
