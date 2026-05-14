@@ -5,7 +5,7 @@ import sys
 import pandas as pd
 import numpy as np
 import copy
-from abc import ABC, abstractmethod, abstractclassmethod, abstractproperty
+from abc import ABC, abstractmethod
 
 from skimage.measure import find_contours
 import itertools
@@ -20,7 +20,8 @@ class BaseRegionFeaturizer(ABC):
     def apply_featurizer(self):
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def feature_name(self):
         pass
 
@@ -30,7 +31,7 @@ class Region:
     def __init__(
         self,
         region: np.ndarray,
-        featurizers: list[BaseRegionFeaturizer] = [],
+        featurizers: list[BaseRegionFeaturizer] | None = None,
     ):
         """
         A class that represents a distinct region within an image.
@@ -43,7 +44,7 @@ class Region:
         """
         # Default variables
         self.region = region
-        self.featurizers = featurizers
+        self.featurizers = list(featurizers) if featurizers is not None else []
 
         # Memoized variables
         self._edge_pixels = None
@@ -69,23 +70,23 @@ class Region:
 
     @classmethod
     def from_image_and_mask(cls, image: np.ndarray, mask: np.ndarray):
-        '''
+        """
         Given the mask (2D bool) of an image, get only the region from the image
         Args:
             image (np.ndarray) : Full image
             mask (np.ndarray) : Boolean logical of just the region of interest
-        '''
+        """
         input_region = copy.deepcopy(image)
         input_region[~mask] = 0
         return cls(input_region)
 
     @classmethod
     def from_image_markers_num(cls, image: np.ndarray, markers: np.ndarray, num: int):
-        '''
+        """
         Given an image and its corresponding markers, keep the mask of only the corresponding marker
         Args:
             image (np.ndarray)
-        '''
+        """
         mask = markers == num
         input_region = copy.deepcopy(image)
         input_region[~mask] = 0
@@ -624,7 +625,7 @@ def merge_new_features(df_left, df_right, feature_to_merge, columns_to_merge_on)
         df_left (pd.DataFrame) : Dataframe to merge onto
         df_right (pd.DataFrame) : Dataframe being merged from
         feature_to_merge (str) : Feature to merge onto
-        columns_to_merge_on (list[str]) : Keys to merge onto to ensure commensurate dataframes. Usually index 
+        columns_to_merge_on (list[str]) : Keys to merge onto to ensure commensurate dataframes. Usually index
     """
     df_right_reduced = df_right[[feature_to_merge, *columns_to_merge_on]]
     df_adjusted = pd.merge(left=df_left, right=df_right_reduced, on=columns_to_merge_on)

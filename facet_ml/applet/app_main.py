@@ -192,7 +192,7 @@ class Ui(QtWidgets.QDialog):
 
         segmenter_mode = segment_mode_mapper[segment_mode]
         edge_modification = edge_mode_mapper[edge_mode]
-        if isinstance(segmenter_mode["segmenter"], AlgorithmicSegmenter):
+        if issubclass(segmenter_mode["segmenter"], AlgorithmicSegmenter):
             segmenter_mode["segmenter_kwargs"] = segmenter_mode["segmenter_kwargs"] | {
                 "edge_modification": edge_modification
             }
@@ -358,7 +358,7 @@ class Ui(QtWidgets.QDialog):
         """
 
         self.image_segmenter.df  # Ensure this is instantiated
-        if ~np.isnan(self.image_segmenter._region_tracker):
+        if self.image_segmenter._region_tracker is not None:
             self.enable_classify_buttons(True)
             # Image
             region_pix = cv_to_QPixMap(

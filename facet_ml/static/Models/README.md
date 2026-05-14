@@ -1,12 +1,12 @@
 <h2> Downloading Files </h2>
 
-<p>To download each file, go to the following resource or the associated command:</p>
+<p>After installing the package, run <code>download_models</code> to fetch the Zenodo-hosted models and the Segment Anything checkpoint automatically.</p>
 
+<p>The downloader uses the Zenodo record at <a href="https://doi.org/10.5281/zenodo.14019586">10.5281/zenodo.14019586</a> and places known files into the locations expected by <code>facet_ml</code>.</p>
 
-
-<li> Models trained as part of the work on <a href="https://doi.org/10.5281/zenodo.14019586">Zenodo</a> </li>
-
-<li>Segment Anything Vi-T Large <code>wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth </code></li>
+<li> Default download command: <code>download_models</code> </li>
+<li> Re-download and replace existing files: <code>download_models --overwrite</code></li>
+<li> Skip the Segment Anything checkpoint: <code>download_models --skip-sam</code></li>
 </ul>
 <p>The mask_rcnn model needs to be placed in a folder called <code>torch</code> to be utilized.</p>
 

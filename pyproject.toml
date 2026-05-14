@@ -5,6 +5,36 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "facet_ml"
 version = "0.2.0"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "numpy>=1.25,<2",
+    "pandas",
+    "scipy",
+    "scikit-image",
+    "scikit-learn==1.2.0",
+    "matplotlib",
+    "opencv-python<4.12",
+    "h5py",
+    "pillow",
+    "dash",
+    "dash-bootstrap-components",
+    "pyyaml",
+    "requests",
+    "torch",
+    "torchvision",
+]
+
+[project.optional-dependencies]
+gui = ["PyQt5"]
+models = [
+    "pycocotools",
+    "segment-anything",
+    "fvcore",
+    "iopath",
+    "hydra-core",
+    "omegaconf",
+]
+dev = ["pytest", "black"]
 
 [project.scripts]
 qt_applet = "facet_ml.applet.app_main:run_app"
@@ -12,6 +42,7 @@ dash_applet = "facet_ml.applet.dash_main:run_app"
 train_rf_model = "facet_ml.classification.model_training:train_model"
 use_rf_model = "facet_ml.classification.model_using:use_model"
 apply_segmenter = "facet_ml.segmentation.segmenter:use_image_segmenter"
+download_models = "facet_ml.download_models:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

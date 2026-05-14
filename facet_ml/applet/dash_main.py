@@ -6,6 +6,7 @@ from PIL import Image
 from io import BytesIO
 import h5py
 from pathlib import Path
+import torch
 
 import numpy as np
 
@@ -44,7 +45,8 @@ segment_mode_mapper = {
     "Segment Anything": {
         "segmenter": SAMSegmenter,
         "segmenter_kwargs": {
-            "sam_kwargs": {"points_per_side": 64, "min_mask_region_area":20},
+            "sam_kwargs": {"points_per_side": 64, "min_mask_region_area": 20},
+            "device": "cuda" if torch.cuda.is_available() else "cpu",
         },
     },
 }
@@ -57,8 +59,11 @@ edge_mode_mapper = {
 }
 
 # Create App
-app = Dash(__file__, external_stylesheets=[dbc.themes.LUX],
-           assets_folder=str(Path(__file__).parent / "assets"))
+app = Dash(
+    __file__,
+    external_stylesheets=[dbc.themes.LUX],
+    assets_folder=str(Path(__file__).parent / "assets"),
+)
 app.layout = dash_divs.get_main_div()
 
 
@@ -99,7 +104,7 @@ class AppState:
             return None
         else:
             return self.batch_image_segmenter[tracker]
-    
+
     @property
     def image(self):
         tracker = self.batch_tracker % len(self.images)
@@ -151,7 +156,7 @@ segmentation_inputs_state = {
 
 @callback(
     output=[
-        Output("input_image_div", "children",allow_duplicate=True),
+        Output("input_image_div", "children", allow_duplicate=True),
         Output("threshold_image_div", "children", allow_duplicate=True),
         Output("markers_image_div", "children", allow_duplicate=True),
     ],
@@ -177,12 +182,14 @@ def get_input_file(list_contents, list_filenames):
     state.filenames = list_filenames
 
     # Make a black square to indicate image has been laoded
-    thresh_b64 = dash_helper.np_to_base64( np.zeros(np.shape(state.image)) )
-    markers_b64 = dash_helper.np_to_base64( np.zeros(np.shape(state.image)) )
-    
-    return [html.Img(src=list_contents[0], className="processed_image"),
+    thresh_b64 = dash_helper.np_to_base64(np.zeros(np.shape(state.image)))
+    markers_b64 = dash_helper.np_to_base64(np.zeros(np.shape(state.image)))
+
+    return [
+        html.Img(src=list_contents[0], className="processed_image"),
         [html.Img(src=thresh_b64, className="processed_image")],
-        [html.Img(src=markers_b64, className="processed_image")]]
+        [html.Img(src=markers_b64, className="processed_image")],
+    ]
     # raise NotImplemented
 
 
@@ -214,8 +221,10 @@ def perform_segmentation(
     # Segment Mode mapper
     segmenter_instructions = segment_mode_mapper[segmentation_mode]
     edge_arg = edge_mode_mapper[edge_detection_mode]
-    if isinstance(segmenter_instructions["segmenter"], AlgorithmicSegmenter):
-        segmenter_instructions["segmenter_kwargs"]["edge_modification"] = edge_arg
+    if issubclass(segmenter_instructions["segmenter"], AlgorithmicSegmenter):
+        segmenter_instructions["segmenter_kwargs"] = segmenter_instructions[
+            "segmenter_kwargs"
+        ] | {"edge_modification": edge_arg}
 
     # Initialize batch segmenter and control state
     state.batch_image_segmenter = BatchImageSegmenter(
@@ -304,9 +313,8 @@ def input_arrows(
         thresh_b64 = dash_helper.np_to_base64(state.image_segmenter.thresh)
         markers_b64 = dash_helper.np_to_base64(state.image_segmenter.markers)
     else:
-        thresh_b64 = dash_helper.np_to_base64( np.zeros(np.shape(state.image)) )
-        markers_b64 = dash_helper.np_to_base64( np.zeros(np.shape(state.image)) )
-    
+        thresh_b64 = dash_helper.np_to_base64(np.zeros(np.shape(state.image)))
+        markers_b64 = dash_helper.np_to_base64(np.zeros(np.shape(state.image)))
 
     return [
         [html.Img(src=input_b64, className="processed_image")],
@@ -332,12 +340,7 @@ def input_arrows(
     ],
     prevent_initial_call=True,
 )
-def labeling_arrows(left_click, 
-                    right_click,
-                    iid,
-                    tid,
-                    mid
-                    ):
+def labeling_arrows(left_click, right_click, iid, tid, mid):
     if len(state.images) == 0:
         return [iid, tid, mid]
 
@@ -388,12 +391,11 @@ def save_label(n_clicks):
     raise NotImplemented
 
 
-def run_app():
+def run_app(debug=False):
     """
     Simple script for running the dash_app
     """
-    # app.run_server(host="0.0.0.0", port=8050, debug=True)
-    app.run_server( port=8050, debug=True,)
+    app.run(port=8051, debug=debug)
 
 
 if __name__ == "__main__":
